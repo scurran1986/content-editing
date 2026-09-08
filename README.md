@@ -2,6 +2,10 @@
 
 VoiceCam is a browser voice-capture POC.
 
+## Docs
+
+- [`docs/index.md`](docs/index.md)
+
 ## Run
 
 ```bash
