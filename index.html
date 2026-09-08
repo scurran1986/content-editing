@@ -24,6 +24,7 @@
   <span id="status">idle</span>
   <span id="heard"></span>
   <a id="save" hidden><button>Save clip</button></a>
+  <button id="copy">Copy log</button>
 </div>
 <div id="log">Say: record, pause, resume, stop, play, rewind, fast forward</div>
 <script src="commands.js"></script>
@@ -135,6 +136,7 @@ function listen() {
   sr.start(); listening = true;
   $('mic').textContent = 'Listening'; $('mic').classList.add('on');
 }
+$('copy').onclick = () => navigator.clipboard.writeText(navigator.userAgent + '\n' + $('log').textContent).then(() => log('copied'), e => log('copy failed: ' + e.message));
 $('mic').onclick = async () => {
   if (listening) { listening = false; sr.stop(); $('mic').textContent = 'Start listening'; $('mic').classList.remove('on'); return; }
   try { listen(); await camera(); } catch (e) { log('camera: ' + e.message); }
