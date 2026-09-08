@@ -13,7 +13,7 @@
   button.on{background:#e33}
   #status{font-weight:700}
   #heard{color:#9f9;min-height:1.2em}
-  #log{font:12px monospace;color:#aaa;max-height:6em;overflow:auto;padding:0 10px 10px;white-space:pre-line}
+  #log{font:12px monospace;color:#aaa;max-height:12em;overflow:auto;padding:0 10px 10px;white-space:pre-line;user-select:text}
 </style>
 </head>
 <body>
@@ -51,8 +51,11 @@ async function camera() {
     throw new Error('no media');
   }
   $('v').srcObject = stream; $('v').muted = true;
+  log('tracks: ' + stream.getTracks().map(t => t.kind + ':' + t.label + ':' + t.readyState).join(' | '));
   return stream;
 }
+$('v').onerror = () => log('video error: ' + ($('v').error?.message || $('v').error?.code));
+$('v').onloadedmetadata = () => { if (!$('v').srcObject) log('clip ' + $('v').videoWidth + 'x' + $('v').videoHeight + ' ' + $('v').duration + 's'); };
 
 const actions = {
   async record() {
@@ -60,8 +63,10 @@ const actions = {
     await camera();
     chunks = []; clip = null;
     rec = new MediaRecorder(stream);
+    log('recorder: ' + rec.mimeType);
     rec.ondataavailable = e => chunks.push(e.data);
     rec.onstop = () => {
+      log('chunks: ' + chunks.length + ' bytes: ' + chunks.reduce((n, c) => n + c.size, 0));
       clip = URL.createObjectURL(new Blob(chunks, { type: rec.mimeType }));
       $('v').srcObject = null; $('v').src = clip; $('v').muted = false; $('v').controls = true;
       $('save').href = clip; $('save').download = 'voicecam-' + Date.now() + (rec.mimeType.includes('mp4') ? '.mp4' : '.webm'); $('save').hidden = false;
