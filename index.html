@@ -22,6 +22,7 @@
   <button id="mic">Start listening</button>
   <span id="status">idle</span>
   <span id="heard"></span>
+  <a id="save" hidden><button>Save clip</button></a>
 </div>
 <div id="log">Say: record, pause, resume, stop, play, rewind, fast forward</div>
 <script src="commands.js"></script>
@@ -63,6 +64,7 @@ const actions = {
     rec.onstop = () => {
       clip = URL.createObjectURL(new Blob(chunks, { type: rec.mimeType }));
       $('v').srcObject = null; $('v').src = clip; $('v').muted = false; $('v').controls = true;
+      $('save').href = clip; $('save').download = 'voicecam-' + Date.now() + (rec.mimeType.includes('mp4') ? '.mp4' : '.webm'); $('save').hidden = false;
       setState('stopped');
     };
     rec.start(1000); setState('recording');

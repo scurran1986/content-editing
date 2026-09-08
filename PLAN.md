@@ -71,3 +71,6 @@ Needs a Mac + Xcode + iPhone. Blocker until Sean confirms hardware.
 - 2026-09-08: Plan drafted.
 - 2026-09-08: Sean: iOS first. Android deferred. Vosk/Picovoice/RN research kept for later only.
 - 2026-09-08: Sean: Phase 1 = simple voice controls only.
+- 2026-09-08: Sean: no Mac. Pivot to PWA (one HTML file, Web Speech API), GitHub Pages.
+- 2026-09-08: VERIFIED by Sean in Windows Chrome + AirPods: record/pause/resume/stop/play by voice works.
+  Live: https://scurran1986.github.io/content-editing/  Still untested: iPhone Safari.
