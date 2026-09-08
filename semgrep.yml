@@ -1,0 +1,30 @@
+rules:
+  - id: generic-no-eval
+    languages: [generic]
+    severity: ERROR
+    message: Avoid eval in application code.
+    pattern-regex: '\beval\s*\('
+
+  - id: generic-no-new-function
+    languages: [generic]
+    severity: ERROR
+    message: Avoid dynamic Function constructors.
+    pattern-regex: '\bnew\s+Function\s*\('
+
+  - id: generic-no-document-write
+    languages: [generic]
+    severity: WARNING
+    message: Avoid document.write in UI code.
+    pattern-regex: '\bdocument\.write\s*\('
+
+  - id: generic-no-innerhtml
+    languages: [generic]
+    severity: WARNING
+    message: Prefer textContent or DOM nodes over innerHTML.
+    pattern-regex: '\.innerHTML\s*='
+
+  - id: python-no-shell-true
+    languages: [python]
+    severity: ERROR
+    message: Avoid shell=True in subprocess calls.
+    pattern: subprocess.$METHOD(..., shell=True, ...)

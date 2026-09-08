@@ -2,8 +2,11 @@
   "name": "content-editing",
   "private": true,
   "scripts": {
-    "test": "node test_commands.js && node --check commands.js && node test_component.js && node test_vosk.js",
-    "dev": "python3 devserver.py"
+    "test": "node test_commands.js && node --check commands.js && node --check voice_kit.js",
+    "test:component": "node test_component.js",
+    "test:vosk": "node test_vosk.js",
+    "dev": "python3 devserver.py",
+    "pipeline": "bash scripts/local_pipeline.sh"
   },
   "dependencies": {
     "vosk-browser": "^0.0.8"

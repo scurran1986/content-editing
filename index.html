@@ -6,28 +6,516 @@
 <meta name="apple-mobile-web-app-capable" content="yes">
 <title>VoiceCam POC</title>
 <style>
-  body{margin:0;background:#000;color:#fff;font:16px system-ui;display:flex;flex-direction:column;height:100dvh}
-  video{flex:1;width:100%;object-fit:cover;background:#111}
-  #bar{padding:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-  button,select{font:inherit;padding:12px 16px;border:0;border-radius:8px;background:#333;color:#fff}
-  button.on{background:#e33}
-  #status{font-weight:700}
-  #heard{color:#9f9;min-height:1.2em}
-  #log{font:12px monospace;color:#aaa;max-height:12em;overflow:auto;padding:0 10px 10px;white-space:pre-line;user-select:text}
+  :root {
+    color-scheme: dark;
+    --bg-0: #08101f;
+    --bg-1: #0f1730;
+    --bg-2: #172447;
+    --surface: rgba(13, 19, 35, 0.82);
+    --surface-strong: rgba(18, 27, 49, 0.96);
+    --border: rgba(165, 186, 232, 0.18);
+    --border-strong: rgba(165, 186, 232, 0.32);
+    --text: #f5f8ff;
+    --muted: #a8b5d6;
+    --subtle: #7f8cb1;
+    --primary: #79a7ff;
+    --primary-strong: #5f8eff;
+    --success: #58d29c;
+    --danger: #ff6b88;
+    --warning: #ffd166;
+    --shadow: 0 30px 80px rgba(0, 0, 0, 0.45);
+    --radius-lg: 24px;
+    --radius-md: 16px;
+    --radius-sm: 12px;
+    --space-1: 0.5rem;
+    --space-2: 0.75rem;
+    --space-3: 1rem;
+    --space-4: 1.5rem;
+    --space-5: 2rem;
+    --space-6: 3rem;
+  }
+
+  * { box-sizing: border-box; }
+  html { min-height: 100%; }
+  body {
+    margin: 0;
+    min-height: 100dvh;
+    color: var(--text);
+    font: 16px/1.5 "Avenir Next", "Avenir", "Trebuchet MS", "Segoe UI", sans-serif;
+    background:
+      radial-gradient(circle at top left, rgba(121, 167, 255, 0.20), transparent 30%),
+      radial-gradient(circle at top right, rgba(88, 210, 156, 0.12), transparent 26%),
+      linear-gradient(180deg, var(--bg-0), var(--bg-1) 56%, #070d19 100%);
+    overflow-x: hidden;
+  }
+  body::before {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+    background:
+      linear-gradient(135deg, rgba(255, 255, 255, 0.03), transparent 35%),
+      linear-gradient(315deg, rgba(255, 255, 255, 0.02), transparent 45%);
+    mix-blend-mode: screen;
+  }
+
+  a { color: inherit; }
+  button, select, a.btn { font: inherit; }
+  button, select {
+    appearance: none;
+    -webkit-appearance: none;
+    border: 1px solid var(--border);
+    color: var(--text);
+    background: rgba(255, 255, 255, 0.06);
+    border-radius: 999px;
+    min-height: 48px;
+    padding: 0.82rem 1.1rem;
+    transition: transform 140ms ease, border-color 140ms ease, background 140ms ease, box-shadow 140ms ease;
+  }
+  button:hover, select:hover, a.btn:hover {
+    border-color: var(--border-strong);
+    background: rgba(255, 255, 255, 0.1);
+  }
+  button:active, select:active, a.btn:active { transform: translateY(1px); }
+  button:focus-visible, select:focus-visible, a.btn:focus-visible, a.skip-link:focus-visible {
+    outline: 3px solid rgba(121, 167, 255, 0.7);
+    outline-offset: 3px;
+  }
+  button[disabled], select[disabled], a.btn[aria-disabled="true"] {
+    opacity: 0.5;
+    cursor: not-allowed;
+  }
+
+  .skip-link {
+    position: absolute;
+    left: 1rem;
+    top: 1rem;
+    z-index: 20;
+    transform: translateY(-200%);
+    padding: 0.75rem 1rem;
+    border-radius: 999px;
+    background: var(--surface-strong);
+    border: 1px solid var(--border-strong);
+    text-decoration: none;
+  }
+  .skip-link:focus { transform: translateY(0); }
+
+  .app {
+    position: relative;
+    width: min(1200px, calc(100% - 2rem));
+    margin: 0 auto;
+    padding: clamp(1rem, 2vw, 1.75rem) 0 clamp(1.25rem, 3vw, 2rem);
+    display: grid;
+    gap: var(--space-4);
+  }
+
+  .hero {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) auto;
+    gap: var(--space-4);
+    align-items: end;
+    padding: clamp(1.25rem, 2vw, 1.75rem);
+    border: 1px solid var(--border);
+    border-radius: calc(var(--radius-lg) + 4px);
+    background: linear-gradient(180deg, rgba(255, 255, 255, 0.08), rgba(255, 255, 255, 0.03));
+    box-shadow: var(--shadow);
+    backdrop-filter: blur(14px);
+  }
+  .eyebrow {
+    margin: 0 0 0.35rem;
+    color: var(--success);
+    letter-spacing: 0.16em;
+    text-transform: uppercase;
+    font-size: 0.75rem;
+    font-weight: 700;
+  }
+  h1 {
+    margin: 0;
+    font-size: clamp(2rem, 5vw, 3.8rem);
+    line-height: 0.95;
+    letter-spacing: -0.04em;
+  }
+  .lede {
+    max-width: 68ch;
+    margin: 0.75rem 0 0;
+    color: var(--muted);
+    font-size: 1rem;
+  }
+  .hero-metrics {
+    display: grid;
+    gap: 0.65rem;
+    justify-items: end;
+  }
+
+  .pill {
+    display: inline-flex;
+    align-items: center;
+    gap: 0.5rem;
+    min-height: 2.5rem;
+    padding: 0.45rem 0.85rem;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--text);
+    font-weight: 650;
+    letter-spacing: 0.01em;
+  }
+  .pill::before {
+    content: "";
+    width: 0.65rem;
+    height: 0.65rem;
+    border-radius: 999px;
+    background: var(--subtle);
+    box-shadow: 0 0 0 4px rgba(255, 255, 255, 0.05);
+  }
+  #status[data-state="recording"]::before,
+  #status[data-state="playing"]::before,
+  #status[data-state="stopped"]::before { background: var(--success); }
+  #status[data-state="paused"]::before { background: var(--warning); }
+  #status[data-state="idle"]::before { background: var(--subtle); }
+  #heard:not(:empty)::before { background: var(--primary); }
+  #heard { color: var(--muted); }
+  #heard:empty { display: none; }
+
+  .dashboard {
+    display: grid;
+    grid-template-columns: minmax(0, 1.35fr) minmax(320px, 0.9fr);
+    gap: var(--space-4);
+    align-items: start;
+  }
+
+  .panel {
+    padding: clamp(1rem, 2vw, 1.35rem);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-lg);
+    background: var(--surface);
+    box-shadow: var(--shadow);
+    backdrop-filter: blur(12px);
+  }
+  .panel h2 {
+    margin: 0 0 0.35rem;
+    font-size: 1.05rem;
+    letter-spacing: -0.02em;
+  }
+  .panel p.subhead {
+    margin: 0 0 1rem;
+    color: var(--muted);
+    font-size: 0.94rem;
+  }
+
+  .preview {
+    display: grid;
+    gap: 1rem;
+  }
+  .frame {
+    position: relative;
+    overflow: hidden;
+    min-height: min(62vh, 620px);
+    border-radius: calc(var(--radius-lg) + 2px);
+    border: 1px solid var(--border-strong);
+    background:
+      radial-gradient(circle at 20% 0%, rgba(121, 167, 255, 0.22), transparent 28%),
+      linear-gradient(180deg, rgba(255, 255, 255, 0.06), rgba(0, 0, 0, 0.12));
+  }
+  .frame::after {
+    content: "";
+    position: absolute;
+    inset: auto 0 0;
+    height: 36%;
+    background: linear-gradient(180deg, transparent, rgba(0, 0, 0, 0.35));
+    pointer-events: none;
+  }
+  video {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    object-fit: cover;
+    background: #0a0f19;
+  }
+  .frame-meta {
+    position: absolute;
+    inset: auto 1rem 1rem 1rem;
+    display: flex;
+    justify-content: space-between;
+    align-items: end;
+    gap: 1rem;
+    z-index: 1;
+    pointer-events: none;
+  }
+  .frame-meta .meta-copy {
+    max-width: 40ch;
+    color: rgba(245, 248, 255, 0.82);
+    font-size: 0.92rem;
+  }
+
+  #bar {
+    display: grid;
+    gap: 1rem;
+  }
+  .toolbar {
+    display: grid;
+    grid-template-columns: minmax(0, 1fr);
+    gap: 0.85rem;
+  }
+  .field {
+    display: grid;
+    gap: 0.45rem;
+  }
+  .field label {
+    font-size: 0.88rem;
+    color: var(--muted);
+    font-weight: 600;
+    letter-spacing: 0.01em;
+  }
+  select {
+    width: 100%;
+    background-image:
+      linear-gradient(45deg, transparent 50%, var(--muted) 50%),
+      linear-gradient(135deg, var(--muted) 50%, transparent 50%);
+    background-position:
+      calc(100% - 1.15rem) 50%,
+      calc(100% - 0.8rem) 50%;
+    background-size: 0.35rem 0.35rem, 0.35rem 0.35rem;
+    background-repeat: no-repeat;
+    padding-right: 2.4rem;
+  }
+  .actions {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.75rem;
+  }
+  .btn, a.btn {
+    display: inline-flex;
+    align-items: center;
+    justify-content: center;
+    min-height: 48px;
+    padding: 0.82rem 1.05rem;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: rgba(255, 255, 255, 0.06);
+    color: var(--text);
+    text-decoration: none;
+    cursor: pointer;
+  }
+  .btn--primary {
+    border-color: rgba(121, 167, 255, 0.42);
+    background: linear-gradient(180deg, rgba(121, 167, 255, 0.36), rgba(95, 142, 255, 0.24));
+    box-shadow: 0 10px 22px rgba(95, 142, 255, 0.18);
+  }
+  .btn--primary.on {
+    border-color: rgba(255, 107, 136, 0.55);
+    background: linear-gradient(180deg, rgba(255, 107, 136, 0.38), rgba(214, 64, 101, 0.3));
+    box-shadow: 0 10px 22px rgba(255, 107, 136, 0.16);
+  }
+  .btn--ghost { background: rgba(255, 255, 255, 0.05); }
+  #save[hidden] { display: none; }
+  .status-grid {
+    display: grid;
+    gap: 0.75rem;
+  }
+  .status-card {
+    display: grid;
+    gap: 0.35rem;
+    padding: 0.95rem 1rem;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border);
+    background: rgba(255, 255, 255, 0.04);
+  }
+  .status-card strong {
+    font-size: 0.88rem;
+    color: var(--muted);
+    font-weight: 600;
+  }
+  .status-card span { color: var(--text); }
+
+  .commands {
+    display: grid;
+    gap: 0.85rem;
+  }
+  .chips {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.55rem;
+  }
+  .chip {
+    display: inline-flex;
+    align-items: center;
+    min-height: 2.2rem;
+    padding: 0.35rem 0.75rem;
+    border-radius: 999px;
+    border: 1px solid var(--border);
+    background: rgba(255, 255, 255, 0.05);
+    color: var(--text);
+    font-size: 0.92rem;
+  }
+  .chip[data-tone="good"] { border-color: rgba(88, 210, 156, 0.28); }
+  .chip[data-tone="warn"] { border-color: rgba(255, 209, 102, 0.28); }
+
+  .log-panel {
+    display: grid;
+    gap: 0.75rem;
+  }
+  #log {
+    margin: 0;
+    min-height: 11rem;
+    max-height: 16rem;
+    overflow: auto;
+    padding: 1rem;
+    border-radius: var(--radius-md);
+    border: 1px solid var(--border);
+    background: rgba(4, 8, 16, 0.48);
+    color: #d4ddf6;
+    font: 0.88rem/1.55 "SFMono-Regular", Consolas, "Liberation Mono", Menlo, monospace;
+    white-space: pre-wrap;
+    user-select: text;
+  }
+
+  @media (max-width: 960px) {
+    .hero, .dashboard {
+      grid-template-columns: 1fr;
+    }
+    .hero-metrics { justify-items: start; }
+    .frame { min-height: 52vh; }
+  }
+
+  @media (max-width: 640px) {
+    .app {
+      width: min(100% - 1rem, 1200px);
+      gap: 1rem;
+    }
+    .panel, .hero { border-radius: 20px; }
+    .frame-meta {
+      inset: auto 0.75rem 0.75rem 0.75rem;
+      flex-direction: column;
+      align-items: start;
+    }
+    .actions button, .actions a.btn { width: 100%; }
+  }
+
+  @media (prefers-reduced-motion: reduce) {
+    *, *::before, *::after {
+      scroll-behavior: auto;
+      transition-duration: 0ms !important;
+      animation-duration: 0ms !important;
+      animation-iteration-count: 1 !important;
+    }
+  }
+
+  @media (forced-colors: active) {
+    :root {
+      --border: CanvasText;
+      --border-strong: CanvasText;
+      --text: CanvasText;
+      --muted: CanvasText;
+    }
+    body, .panel, .hero, .frame, #log, .status-card, .chip, .btn, select {
+      forced-color-adjust: auto;
+      background: Canvas;
+      color: CanvasText;
+      border-color: CanvasText;
+      box-shadow: none;
+    }
+  }
 </style>
 </head>
 <body>
-<video id="v" playsinline muted autoplay></video>
-<div id="bar">
-  <select id="src"><option value="camera">Camera</option><option value="screen">Screen</option></select>
-  <button id="mic">Start listening</button>
-  <span id="status">idle</span>
-  <span id="heard"></span>
-  <a id="save" hidden><button>Save clip</button></a>
-  <button id="copy">Copy log</button>
+<a class="skip-link" href="#bar">Skip to controls</a>
+<div class="app">
+  <header class="hero">
+    <div>
+      <p class="eyebrow">Accessible voice capture</p>
+      <h1>VoiceCam</h1>
+      <p class="lede">A compact UI system for camera or screen recording with voice commands, strong status feedback, and keyboard-friendly controls.</p>
+    </div>
+    <div class="hero-metrics" aria-label="Current status">
+      <span id="status" class="pill" role="status" aria-live="polite" aria-atomic="true">idle</span>
+      <span id="heard" class="pill" role="status" aria-live="polite" aria-atomic="true"></span>
+    </div>
+  </header>
+
+  <main class="dashboard">
+    <section class="panel preview" aria-labelledby="preview-title">
+      <div>
+        <h2 id="preview-title">Preview</h2>
+        <p class="subhead">Large, high-contrast canvas for live capture and playback.</p>
+      </div>
+      <div class="frame">
+        <video id="v" playsinline muted autoplay aria-label="Camera or clip preview"></video>
+        <div class="frame-meta" aria-hidden="true">
+          <div class="pill">Touch or keyboard control</div>
+          <div class="meta-copy">Commands stay short so the transcript can be checked before an action fires.</div>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel commands" aria-labelledby="controls-title">
+      <div>
+        <h2 id="controls-title">Controls</h2>
+        <p class="subhead">Select the capture source, then start listening.</p>
+      </div>
+      <div id="bar" class="toolbar">
+        <div class="field">
+          <label for="src">Capture source</label>
+          <select id="src">
+            <option value="camera">Camera</option>
+            <option value="screen">Screen</option>
+          </select>
+        </div>
+        <div class="field">
+          <label for="engine">Voice engine</label>
+          <select id="engine">
+            <option value="auto">Auto</option>
+            <option value="web">Web Speech</option>
+            <option value="vosk">Vosk offline</option>
+          </select>
+        </div>
+        <div class="actions">
+          <button id="mic" class="btn btn--primary" aria-pressed="false">Start listening</button>
+          <a id="save" class="btn btn--ghost" hidden>Save clip</a>
+          <button id="copy" class="btn btn--ghost">Copy log</button>
+        </div>
+      </div>
+      <div class="status-grid" aria-label="System notes">
+        <div class="status-card">
+          <strong>Voice status</strong>
+          <span id="heard-note">Spoken text appears above for confirmation before commands run. Auto uses Web Speech first, then Vosk if needed.</span>
+        </div>
+        <div class="status-card">
+          <strong>Accessibility</strong>
+          <span>Buttons are at least 48px tall, focus rings are visible, and color contrast is tuned for readability.</span>
+        </div>
+      </div>
+    </section>
+
+    <section class="panel commands" aria-labelledby="commands-title">
+      <div>
+        <h2 id="commands-title">Command system</h2>
+        <p class="subhead">Use short utterances to reduce false triggers.</p>
+      </div>
+      <div class="chips" aria-label="Supported commands">
+        <span class="chip" data-tone="good">record</span>
+        <span class="chip" data-tone="good">pause</span>
+        <span class="chip" data-tone="good">resume</span>
+        <span class="chip" data-tone="good">stop</span>
+        <span class="chip" data-tone="good">play</span>
+        <span class="chip" data-tone="warn">rewind</span>
+        <span class="chip" data-tone="warn">fast forward</span>
+        <span class="chip" data-tone="warn">again</span>
+      </div>
+    </section>
+
+    <section class="panel log-panel" aria-labelledby="log-title">
+      <div>
+        <h2 id="log-title">Activity log</h2>
+        <p class="subhead">Useful for debugging media permissions, speech lifecycle, and command timing.</p>
+      </div>
+      <div id="log" role="log" aria-live="polite" aria-relevant="additions text">Say: record, pause, resume, stop, play, rewind, fast forward</div>
+    </section>
+  </main>
 </div>
-<div id="log">Say: record, pause, resume, stop, play, rewind, fast forward</div>
 <script src="commands.js"></script>
+<script src="voice_kit.js"></script>
 <script>
 const $ = id => document.getElementById(id);
 const log = m => {
@@ -37,51 +525,175 @@ const log = m => {
 window.onerror = (m, s, l) => log('JS ERROR ' + m + ' @' + l);
 window.onunhandledrejection = e => log('PROMISE ERROR ' + (e.reason?.message || e.reason));
 let stream, rec, chunks = [], clip = null, state = 'idle', recT0 = 0;
+let listening = false, srActive = false, lastCmd = 0, retake = false;
+let sr, activeEngine = null;
+let voiceEngine = null;
 
-function setState(s) { state = s; $('status').textContent = s; log('state: ' + s + (rec ? ' rec=' + rec.state : '')); }
+function setListeningUI(on) {
+  $('mic').textContent = on ? 'Stop listening' : 'Start listening';
+  $('mic').classList.toggle('on', on);
+  $('mic').setAttribute('aria-pressed', String(on));
+}
+
+function setState(s) {
+  state = s;
+  $('status').textContent = s;
+  $('status').dataset.state = s;
+  document.documentElement.dataset.state = s;
+  log('state: ' + s + (rec ? ' rec=' + rec.state : ''));
+}
+
+function noteHeard(text, final = true) {
+  $('heard').textContent = text;
+  log((final ? 'heard: ' : 'interim: ') + text);
+}
+
+function dispatch(cmd, now) {
+  if (now - lastCmd < 1500) return false;
+  if (state === 'playing' && !PLAYING_OK.has(cmd)) return false;
+  lastCmd = now;
+  return true;
+}
 
 async function camera() {
   if (stream) return stream;
   if ($('src').value === 'screen') {
-    // ponytail: screen video + mic audio merged into one stream; system audio not captured.
+    // Screen video + mic audio merged into one stream; system audio is not captured.
     const disp = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
     const mic = await navigator.mediaDevices.getUserMedia({ audio: true });
     stream = new MediaStream([...disp.getVideoTracks(), ...mic.getAudioTracks()]);
-    disp.getVideoTracks()[0].onended = () => actions.stop();   // user clicked "Stop sharing"
+    disp.getVideoTracks()[0].onended = () => actions.stop();
     log('got screen+mic');
   } else {
-  const tries = [
-    ['cam+mic', { video: { facingMode: 'user' }, audio: true }],
-    ['cam+mic(any)', { video: true, audio: true }],
-    ['cam only', { video: true }],
-    ['mic only', { audio: true }],
-  ];
-  for (const [name, c] of tries) {
-    try { stream = await navigator.mediaDevices.getUserMedia(c); log('got ' + name); break; }
-    catch (e) { log(name + ': ' + e.name + ' ' + e.message); }
+    const tries = [
+      ['cam+mic', { video: { facingMode: 'user' }, audio: true }],
+      ['cam+mic(any)', { video: true, audio: true }],
+      ['cam only', { video: true }],
+      ['mic only', { audio: true }],
+    ];
+    for (const [name, c] of tries) {
+      try { stream = await navigator.mediaDevices.getUserMedia(c); log('got ' + name); break; }
+      catch (e) { log(name + ': ' + e.name + ' ' + e.message); }
+    }
+    if (!stream) {
+      const devs = await navigator.mediaDevices.enumerateDevices().catch(() => []);
+      log('devices: ' + (devs.map(d => d.kind).join(',') || 'none') + ' — check Settings > Safari > Camera/Microphone = Ask/Allow');
+      throw new Error('no media');
+    }
   }
-  if (!stream) {
-    const devs = await navigator.mediaDevices.enumerateDevices().catch(() => []);
-    log('devices: ' + (devs.map(d => d.kind).join(',') || 'none') + ' — check Settings > Safari > Camera/Microphone = Ask/Allow');
-    throw new Error('no media');
-  }
-  }
-  $('v').srcObject = stream; $('v').muted = true;
+  $('v').srcObject = stream;
+  $('v').muted = true;
   log('tracks: ' + stream.getTracks().map(t => t.kind + ':' + t.label + ':' + t.readyState).join(' | '));
   return stream;
 }
 $('v').onerror = () => log('video error: ' + ($('v').error?.message || $('v').error?.code));
 $('v').onloadedmetadata = () => {
   if ($('v').srcObject) return;
-  if ($('v').duration === Infinity) { $('v').currentTime = 1e9; $('v').ontimeupdate = () => { $('v').ontimeupdate = null; $('v').currentTime = 0; }; }  // webm from MediaRecorder lacks duration; force Chrome to compute it
+  if ($('v').duration === Infinity) {
+    $('v').currentTime = 1e9;
+    $('v').ontimeupdate = () => { $('v').ontimeupdate = null; $('v').currentTime = 0; };
+  }
   log('clip ' + $('v').videoWidth + 'x' + $('v').videoHeight + ' ' + $('v').duration + 's');
 };
+
+async function stopVoiceEngine() {
+  listening = false;
+  srActive = false;
+  setListeningUI(false);
+  if (activeEngine === 'web' && sr) {
+    try { sr.onend = null; sr.stop(); } catch (e) {}
+  }
+  if (activeEngine === 'vosk' && voiceEngine) await voiceEngine.stop();
+  activeEngine = null;
+  sr = null;
+  voiceEngine = null;
+}
+
+async function startWebSpeech() {
+  const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+  if (!SR) throw new Error('SpeechRecognition not available');
+  sr = new SR();
+  sr.continuous = true;
+  sr.interimResults = true;
+  sr.lang = 'en-US';
+  sr.onstart = () => { srActive = true; log('sr: started'); };
+  sr.onaudiostart = () => log('sr: audio');
+  sr.onspeechstart = () => log('sr: speech');
+  sr.onresult = e => {
+    const r = e.results[e.results.length - 1];
+    const text = r[0].transcript;
+    noteHeard(text, r.isFinal);
+    const cmd = parseCommand(text);
+    if (r.isFinal && cmd && dispatch(cmd, Date.now())) {
+      log('> ' + cmd + ' t+' + Math.round(performance.now() - recT0) + 'ms');
+      actions[cmd]();
+    }
+  };
+  sr.onerror = e => {
+    log('sr error: ' + e.error);
+    if (['not-allowed', 'service-not-allowed', 'language-not-supported'].includes(e.error)) {
+      listening = false;
+      setListeningUI(false);
+    }
+    if ($('engine').value === 'auto' && ['network', 'service-not-allowed', 'language-not-supported'].includes(e.error)) {
+      void (async () => {
+        await stopVoiceEngine();
+        try {
+          log('voice: falling back to Vosk');
+          await startVosk();
+        } catch (err) {
+          log('voice: ' + err.message);
+        }
+      })();
+    }
+  };
+  sr.onend = () => {
+    srActive = false;
+    log('sr: ended');
+    if (listening && activeEngine === 'web') setTimeout(() => { if (listening && !srActive) try { sr.start(); } catch (e) { log('sr restart: ' + e.message); } }, 250);
+  };
+  document.onvisibilitychange = () => { if (!document.hidden && listening && activeEngine === 'web' && !srActive) try { sr.start(); } catch (e) {} };
+  sr.start();
+  activeEngine = 'web';
+  listening = true;
+  setListeningUI(true);
+}
+
+async function startVosk() {
+  await camera();
+  voiceEngine = await VoiceKit.createLiveEngine({
+    stream,
+    onPartial: text => noteHeard(text, false),
+    onFinal: text => {
+      noteHeard(text, true);
+      const cmd = parseCommand(text);
+      if (cmd && dispatch(cmd, Date.now())) {
+        log('> ' + cmd + ' t+' + Math.round(performance.now() - recT0) + 'ms');
+        actions[cmd]();
+      }
+    },
+    onError: e => log('vosk: ' + e.message),
+  });
+  activeEngine = 'vosk';
+  listening = true;
+  setListeningUI(true);
+  log('vosk: started');
+}
+
+async function startListening() {
+  const mode = $('engine').value;
+  if (mode === 'web' || (mode === 'auto' && (window.SpeechRecognition || window.webkitSpeechRecognition))) {
+    return startWebSpeech();
+  }
+  return startVosk();
+}
 
 const actions = {
   async record() {
     if (rec && rec.state !== 'inactive') return;
     await camera();
-    chunks = []; clip = null;
+    chunks = [];
+    clip = null;
     rec = new MediaRecorder(stream);
     log('recorder: ' + rec.mimeType);
     rec.ondataavailable = e => chunks.push(e.data);
@@ -89,57 +701,42 @@ const actions = {
       log('chunks: ' + chunks.length + ' bytes: ' + chunks.reduce((n, c) => n + c.size, 0));
       if (retake) { retake = false; log('retake: discarded'); rec = null; actions.record(); return; }
       clip = URL.createObjectURL(new Blob(chunks, { type: rec.mimeType }));
-      $('v').srcObject = null; $('v').src = clip; $('v').muted = false; $('v').controls = true;
-      $('save').href = clip; $('save').download = 'voicecam-' + Date.now() + (rec.mimeType.includes('mp4') ? '.mp4' : '.webm'); $('save').hidden = false;
+      $('v').srcObject = null;
+      $('v').src = clip;
+      $('v').muted = false;
+      $('v').controls = true;
+      $('save').href = clip;
+      $('save').download = 'voicecam-' + Date.now() + (rec.mimeType.includes('mp4') ? '.mp4' : '.webm');
+      $('save').hidden = false;
       setState('stopped');
     };
-    recT0 = performance.now(); rec.start(1000); setState('recording');  // recT0: S7 latency marker; clip time 0 == this instant
+    recT0 = performance.now();
+    rec.start(1000);
+    setState('recording');
   },
-  pause()  { if (rec?.state === 'recording') { rec.pause(); setState('paused'); }
-             else if (clip) { $('v').pause(); setState('paused'); } },
+  pause() { if (rec?.state === 'recording') { rec.pause(); setState('paused'); } else if (clip) { $('v').pause(); setState('paused'); } },
   resume() { if (rec?.state === 'paused') { rec.resume(); setState('recording'); } else actions.play(); },
-  stop()   { if (rec && rec.state !== 'inactive') rec.stop(); else if (clip) { $('v').pause(); $('v').currentTime = 0; setState('stopped'); } },
-  play()   { if (clip) { $('v').play().catch(e => log('play: ' + e.message)); setState('playing'); } },
+  stop() { if (rec && rec.state !== 'inactive') rec.stop(); else if (clip) { $('v').pause(); $('v').currentTime = 0; setState('stopped'); } },
+  play() { if (clip) { $('v').play().catch(e => log('play: ' + e.message)); setState('playing'); } },
   rewind() { if (clip) $('v').currentTime = Math.max(0, $('v').currentTime - 5); },
-  forward(){ if (clip) $('v').currentTime += 5; },
-  again()  { if (rec && rec.state !== 'inactive') { retake = true; rec.stop(); } else actions.record(); },
+  forward() { if (clip) $('v').currentTime += 5; },
+  again() { if (rec && rec.state !== 'inactive') { retake = true; rec.stop(); } else actions.record(); },
 };
-let retake = false;
 // S2 echo guard: while our own clip plays, only transport words may act; a recorded "record"/"again" can't fire.
 const PLAYING_OK = new Set(['pause', 'stop', 'rewind', 'forward']);
-function dispatch(cmd, now) {
-  if (now - lastCmd < 1500) return false;
-  if (state === 'playing' && !PLAYING_OK.has(cmd)) return false;
-  lastCmd = now; return true;
-}
-
-// ponytail: Web Speech API only. Safari sends audio to Apple; fine for a POC.
-const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-let sr, listening = false, srActive = false, lastCmd = 0;
-function listen() {
-  if (!SR) { log('No SpeechRecognition in this browser'); return; }
-  sr = new SR(); sr.continuous = true; sr.interimResults = true; sr.lang = 'en-US';
-  sr.onstart = () => { srActive = true; log('sr: started'); };
-  sr.onaudiostart = () => log('sr: audio');
-  sr.onspeechstart = () => log('sr: speech');
-  sr.onresult = e => {
-    const r = e.results[e.results.length - 1];
-    const text = r[0].transcript;
-    $('heard').textContent = text;
-    log((r.isFinal ? 'heard: ' : 'interim: ') + text);
-    const cmd = parseCommand(text);
-    if (cmd && dispatch(cmd, Date.now())) { log('> ' + cmd + ' t+' + Math.round(performance.now() - recT0) + 'ms'); actions[cmd](); }
-  };
-  sr.onerror = e => { log('sr error: ' + e.error); if (['not-allowed', 'service-not-allowed', 'language-not-supported'].includes(e.error)) listening = false; };
-  sr.onend = () => { srActive = false; log('sr: ended'); if (listening) setTimeout(() => { if (listening && !srActive) try { sr.start(); } catch (e) { log('sr restart: ' + e.message); } }, 250); };
-  document.onvisibilitychange = () => { if (!document.hidden && listening && !srActive) try { sr.start(); } catch (e) {} };
-  sr.start(); listening = true;
-  $('mic').textContent = 'Listening'; $('mic').classList.add('on');
-}
 $('copy').onclick = () => navigator.clipboard.writeText(navigator.userAgent + '\n' + $('log').textContent).then(() => log('copied'), e => log('copy failed: ' + e.message));
 $('mic').onclick = async () => {
-  if (listening) { listening = false; sr.stop(); $('mic').textContent = 'Start listening'; $('mic').classList.remove('on'); return; }
-  try { listen(); await camera(); } catch (e) { log('camera: ' + e.message); }
+  if (listening) {
+    await stopVoiceEngine();
+    return;
+  }
+  try {
+    await startListening();
+    await camera();
+  } catch (e) {
+    log('voice: ' + e.message);
+    await stopVoiceEngine();
+  }
 };
 </script>
 </body>

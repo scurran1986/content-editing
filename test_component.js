@@ -24,6 +24,7 @@ const FAKE_SR = `
   const say = (t, f) => p.evaluate(([t, f]) => __sr.say(t, f), [t, f]);
   const tick = () => p.evaluate(() => { lastCmd = 0; });   // skip the 1.5s debounce between commands
 
+  await p.selectOption('#engine', 'web');
   await p.click('#mic');
   await p.waitForFunction(() => __sr.active && stream);
 
