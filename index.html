@@ -35,7 +35,7 @@ const log = m => {
 };
 window.onerror = (m, s, l) => log('JS ERROR ' + m + ' @' + l);
 window.onunhandledrejection = e => log('PROMISE ERROR ' + (e.reason?.message || e.reason));
-let stream, rec, chunks = [], clip = null, state = 'idle';
+let stream, rec, chunks = [], clip = null, state = 'idle', recT0 = 0;
 
 function setState(s) { state = s; $('status').textContent = s; log('state: ' + s + (rec ? ' rec=' + rec.state : '')); }
 
@@ -86,21 +86,31 @@ const actions = {
     rec.ondataavailable = e => chunks.push(e.data);
     rec.onstop = () => {
       log('chunks: ' + chunks.length + ' bytes: ' + chunks.reduce((n, c) => n + c.size, 0));
+      if (retake) { retake = false; log('retake: discarded'); rec = null; actions.record(); return; }
       clip = URL.createObjectURL(new Blob(chunks, { type: rec.mimeType }));
       $('v').srcObject = null; $('v').src = clip; $('v').muted = false; $('v').controls = true;
       $('save').href = clip; $('save').download = 'voicecam-' + Date.now() + (rec.mimeType.includes('mp4') ? '.mp4' : '.webm'); $('save').hidden = false;
       setState('stopped');
     };
-    rec.start(1000); setState('recording');
+    recT0 = performance.now(); rec.start(1000); setState('recording');  // recT0: S7 latency marker; clip time 0 == this instant
   },
   pause()  { if (rec?.state === 'recording') { rec.pause(); setState('paused'); }
              else if (clip) { $('v').pause(); setState('paused'); } },
   resume() { if (rec?.state === 'paused') { rec.resume(); setState('recording'); } else actions.play(); },
   stop()   { if (rec && rec.state !== 'inactive') rec.stop(); else if (clip) { $('v').pause(); $('v').currentTime = 0; setState('stopped'); } },
-  play()   { if (clip) { $('v').play(); setState('playing'); } },
+  play()   { if (clip) { $('v').play().catch(e => log('play: ' + e.message)); setState('playing'); } },
   rewind() { if (clip) $('v').currentTime = Math.max(0, $('v').currentTime - 5); },
   forward(){ if (clip) $('v').currentTime += 5; },
+  again()  { if (rec && rec.state !== 'inactive') { retake = true; rec.stop(); } else actions.record(); },
 };
+let retake = false;
+// S2 echo guard: while our own clip plays, only transport words may act; a recorded "record"/"again" can't fire.
+const PLAYING_OK = new Set(['pause', 'stop', 'rewind', 'forward']);
+function dispatch(cmd, now) {
+  if (now - lastCmd < 1500) return false;
+  if (state === 'playing' && !PLAYING_OK.has(cmd)) return false;
+  lastCmd = now; return true;
+}
 
 // ponytail: Web Speech API only. Safari sends audio to Apple; fine for a POC.
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
@@ -117,8 +127,7 @@ function listen() {
     $('heard').textContent = text;
     log((r.isFinal ? 'heard: ' : 'interim: ') + text);
     const cmd = parseCommand(text);
-    // ponytail: 1.5s debounce is the echo guard — playback saying "stop" re-triggers otherwise. Tune on device.
-    if (cmd && Date.now() - lastCmd > 1500) { lastCmd = Date.now(); log('> ' + cmd); actions[cmd](); }
+    if (cmd && dispatch(cmd, Date.now())) { log('> ' + cmd + ' t+' + Math.round(performance.now() - recT0) + 'ms'); actions[cmd](); }
   };
   sr.onerror = e => { log('sr error: ' + e.error); if (['not-allowed', 'service-not-allowed', 'language-not-supported'].includes(e.error)) listening = false; };
   sr.onend = () => { srActive = false; log('sr: ended'); if (listening) setTimeout(() => { if (listening && !srActive) try { sr.start(); } catch (e) { log('sr restart: ' + e.message); } }, 250); };

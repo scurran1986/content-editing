@@ -8,12 +8,15 @@ const COMMANDS = [
   ['pause', 'pause'], ['hold', 'pause'],
   ['stop', 'stop'], ['cut', 'stop'],
   ['play', 'play'],
+  ['again', 'again'], ['retake', 'again'],
 ];
 
-// Only the tail of the transcript counts, so a creator saying
-// "...and then I had to stop" mid-sentence won't fire unless "stop" is the last word.
+// Only short utterances count (<=3 words) and only their tail, so a creator saying
+// "...and then I had to stop" mid-sentence won't fire. "okay stop" / "please stop" do.
 function parseCommand(text) {
-  const tail = text.trim().toLowerCase().replace(/[.,!?]/g, '').split(/\s+/).slice(-2).join(' ');
+  const words = text.trim().toLowerCase().replace(/[.,!?]/g, '').split(/\s+/).filter(Boolean);
+  if (words.length === 0 || words.length > 3) return null;
+  const tail = words.slice(-2).join(' ');
   for (const [phrase, cmd] of COMMANDS) {
     if (tail === phrase || tail.endsWith(' ' + phrase)) return cmd;
   }

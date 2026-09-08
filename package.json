@@ -1,5 +1,8 @@
 {
   "name": "content-editing",
   "private": true,
-  "scripts": { "test": "node test_commands.js && node --check commands.js" }
+  "scripts": {
+    "test": "node test_commands.js && node --check commands.js && node test_component.js",
+    "dev": "python3 devserver.py"
+  }
 }
