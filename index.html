@@ -34,7 +34,21 @@ function setState(s) { state = s; $('status').textContent = s; }
 
 async function camera() {
   if (stream) return stream;
-  stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: true });
+  const tries = [
+    ['cam+mic', { video: { facingMode: 'user' }, audio: true }],
+    ['cam+mic(any)', { video: true, audio: true }],
+    ['cam only', { video: true }],
+    ['mic only', { audio: true }],
+  ];
+  for (const [name, c] of tries) {
+    try { stream = await navigator.mediaDevices.getUserMedia(c); log('got ' + name); break; }
+    catch (e) { log(name + ': ' + e.name + ' ' + e.message); }
+  }
+  if (!stream) {
+    const devs = await navigator.mediaDevices.enumerateDevices().catch(() => []);
+    log('devices: ' + (devs.map(d => d.kind).join(',') || 'none') + ' — check Settings > Safari > Camera/Microphone = Ask/Allow');
+    throw new Error('no media');
+  }
   $('v').srcObject = stream; $('v').muted = true;
   return stream;
 }
