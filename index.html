@@ -1,0 +1,90 @@
+<!doctype html>
+<html lang="en">
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width,initial-scale=1,viewport-fit=cover">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<title>VoiceCam POC</title>
+<style>
+  body{margin:0;background:#000;color:#fff;font:16px system-ui;display:flex;flex-direction:column;height:100dvh}
+  video{flex:1;width:100%;object-fit:cover;background:#111}
+  #bar{padding:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
+  button{font:inherit;padding:12px 16px;border:0;border-radius:8px;background:#333;color:#fff}
+  button.on{background:#e33}
+  #status{font-weight:700}
+  #heard{color:#9f9;min-height:1.2em}
+  #log{font:12px monospace;color:#aaa;max-height:6em;overflow:auto;padding:0 10px 10px;white-space:pre-line}
+</style>
+</head>
+<body>
+<video id="v" playsinline muted autoplay></video>
+<div id="bar">
+  <button id="mic">Start listening</button>
+  <span id="status">idle</span>
+  <span id="heard"></span>
+</div>
+<div id="log">Say: record, pause, resume, stop, play, rewind, fast forward</div>
+<script src="commands.js"></script>
+<script>
+const $ = id => document.getElementById(id);
+const log = m => { $('log').textContent = m + '\n' + $('log').textContent; };
+let stream, rec, chunks = [], clip = null, state = 'idle';
+
+function setState(s) { state = s; $('status').textContent = s; }
+
+async function camera() {
+  if (stream) return stream;
+  stream = await navigator.mediaDevices.getUserMedia({ video: { facingMode: 'user' }, audio: true });
+  $('v').srcObject = stream; $('v').muted = true;
+  return stream;
+}
+
+const actions = {
+  async record() {
+    if (rec && rec.state !== 'inactive') return;
+    await camera();
+    chunks = []; clip = null;
+    rec = new MediaRecorder(stream);
+    rec.ondataavailable = e => chunks.push(e.data);
+    rec.onstop = () => {
+      clip = URL.createObjectURL(new Blob(chunks, { type: rec.mimeType }));
+      $('v').srcObject = null; $('v').src = clip; $('v').muted = false; $('v').controls = true;
+      setState('stopped');
+    };
+    rec.start(1000); setState('recording');
+  },
+  pause()  { if (rec?.state === 'recording') { rec.pause(); setState('paused'); }
+             else if (clip) { $('v').pause(); setState('paused'); } },
+  resume() { if (rec?.state === 'paused') { rec.resume(); setState('recording'); } else actions.play(); },
+  stop()   { if (rec && rec.state !== 'inactive') rec.stop(); else if (clip) { $('v').pause(); $('v').currentTime = 0; setState('stopped'); } },
+  play()   { if (clip) { $('v').play(); setState('playing'); } },
+  rewind() { if (clip) $('v').currentTime = Math.max(0, $('v').currentTime - 5); },
+  forward(){ if (clip) $('v').currentTime += 5; },
+};
+
+// ponytail: Web Speech API only. Safari sends audio to Apple; fine for a POC.
+const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
+let sr, listening = false, lastCmd = 0;
+function listen() {
+  if (!SR) { log('No SpeechRecognition in this browser'); return; }
+  sr = new SR(); sr.continuous = true; sr.interimResults = true; sr.lang = 'en-US';
+  sr.onresult = e => {
+    const r = e.results[e.results.length - 1];
+    const text = r[0].transcript;
+    $('heard').textContent = text;
+    const cmd = parseCommand(text);
+    // ponytail: 1.5s debounce is the echo guard — playback saying "stop" re-triggers otherwise. Tune on device.
+    if (cmd && Date.now() - lastCmd > 1500) { lastCmd = Date.now(); log('> ' + cmd); actions[cmd](); }
+  };
+  sr.onerror = e => log('sr error: ' + e.error);
+  sr.onend = () => { if (listening) sr.start(); };   // Safari stops after silence; restart
+  sr.start(); listening = true;
+  $('mic').textContent = 'Listening'; $('mic').classList.add('on');
+}
+$('mic').onclick = async () => {
+  if (listening) { listening = false; sr.stop(); $('mic').textContent = 'Start listening'; $('mic').classList.remove('on'); return; }
+  try { await camera(); listen(); } catch (e) { log('camera: ' + e.message); }
+};
+</script>
+</body>
+</html>

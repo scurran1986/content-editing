@@ -1,0 +1,48 @@
+iOS MIC SHARING — video recording + speech commands at once (verified 2026-09-08)
+
+Sources: curled from developer.apple.com doc JSON API.
+
+FACTS
+1. AVCaptureAudioDataOutput "records audio and provides access to audio sample
+   buffers as they are recorded." -> we get CMSampleBuffers from the same
+   capture session that records video.
+   https://developer.apple.com/documentation/avfoundation/avcaptureaudiodataoutput
+2. SFSpeechAudioBufferRecognitionRequest.appendAudioSampleBuffer(_:) accepts
+   CMSampleBuffer directly ("must be in a native format").
+   https://developer.apple.com/documentation/speech/sfspeechaudiobufferrecognitionrequest/appendaudiosamplebuffer(_:)
+   => No AVAudioEngine tap needed. No mic conflict. One session, fan out buffers.
+3. requiresOnDeviceRecognition = true keeps audio on device; Apple warns
+   on-device "won't be as accurate". Fine for a 5-word vocabulary.
+   https://developer.apple.com/documentation/speech/sfspeechrecognitionrequest/requiresondevicerecognition
+4. AVAudioSession mode .videoRecording: picks mic nearest camera, "appropriate
+   audio-signal processing". No echo cancellation mentioned.
+   https://developer.apple.com/documentation/avfaudio/avaudiosession/mode-swift.struct/videorecording
+5. AVAudioSession mode .videoChat: applies voice processing incl. echo
+   cancellation + AGC, but only if using AVAudioEngine/voice-processing IO
+   unit; otherwise "reduces the processing" and lowers playback level.
+   https://developer.apple.com/documentation/avfaudio/avaudiosession/mode-swift.struct/videochat
+
+UNVERIFIED (needs device test, no doc found)
+- Whether SFSpeechRecognizer's ~1 min session limit applies to on-device
+  requests (community reports say it does). Plan: restart request on
+  completion/error, keep capture session running.
+- Whether AEC from .videoChat mode degrades recorded video audio quality.
+- Bluetooth mic behaviour.
+
+MINIMAL ARCHITECTURE (Phase 1)
+  AVCaptureSession
+    ├─ AVCaptureDeviceInput(camera) ─┐
+    ├─ AVCaptureDeviceInput(mic) ────┼─> AVCaptureMovieFileOutput -> .mov
+    └─ AVCaptureAudioDataOutput ──────> SFSpeechAudioBufferRecognitionRequest
+                                        (requiresOnDeviceRecognition = true,
+                                         contextualStrings = 5 commands)
+  Recognizer partial results -> last word ∈ {pause, play, stop, rewind, fast forward}
+    -> command handler. Restart request every completion.
+  Playback (AVPlayer) runs while recognizer keeps listening.
+
+ECHO STRATEGY (lazy first)
+  Phase 1: playback through speaker at moderate volume, recognizer keeps
+  listening. Test if "play"/"stop" in our own recording self-trigger.
+  If yes: debounce (ignore command matching the word just played) or drop
+  to .videoChat mode with voice-processing IO. Decide from device test,
+  not speculation.

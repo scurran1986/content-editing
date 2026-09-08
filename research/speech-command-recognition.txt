@@ -1,0 +1,40 @@
+ON-DEVICE SPEECH COMMAND RECOGNITION — pause/play/stop/rewind/fast-forward/again
+(mobile app, mic already open for video recording, possible playback audio)
+
+MIC-SHARING GROUND RULE (applies to every option)
+- Android: "Two ordinary apps can never capture audio at the same time"; the loser gets silence (https://developer.android.com/media/platform/sharing-audio-input). Inside ONE app you own the buffer: open one AudioRecord and fan out PCM frames to both encoder and recognizer. Engines that open their own mic (SpeechRecognizer default source, Picovoice "Manager" classes) will fight your recorder.
+- iOS: one AVAudioSession per app. installTap on the AVAudioEngine input node and feed the same buffers to the video writer and the recognizer.
+- Echo: none of these engines do echo cancellation. Use platform AEC (iOS voice-processing input node; Android AcousticEchoCanceler, device-dependent) or playback words like "play"/"stop" will self-trigger. Safer: push-to-talk or a wake word.
+
+OPTIONS
+
+1. iOS Speech framework (SFSpeechRecognizer, requiresOnDeviceRecognition = true; iOS 26 adds SpeechAnalyzer/SpeechTranscriber)
+   Latency: streaming partials, sub-second. Offline: yes when supportsOnDeviceRecognition. Cost: free. Mic: you feed SFSpeechAudioBufferRecognitionRequest buffers, shares the tap fine. Battery: full ASR running continuously; numbers unknown. Weakness: dictation, not a grammar — post-filter text for the 6 commands; contextualStrings helps.
+   https://developer.apple.com/documentation/speech/sfspeechrecognizer
+   https://developer.apple.com/documentation/speech/sfspeechrecognitionrequest/requiresondevicerecognition
+
+2. Android SpeechRecognizer (createOnDeviceSpeechRecognizer, API 31+) / ML Kit
+   Offline: yes on API 31+ where isOnDeviceRecognitionAvailable. Cost: free. Latency: streaming partials; precise unknown. Mic: opens its own mic by default → conflicts; RecognizerIntent.EXTRA_AUDIO_SOURCE (API 33) accepts a ParcelFileDescriptor of your own PCM. On-device engine availability is OEM/Google-services dependent. ML Kit has no speech-to-text API. Battery: unknown.
+   https://developer.android.com/reference/android/speech/SpeechRecognizer
+   https://developer.android.com/reference/android/speech/RecognizerIntent
+
+3. Picovoice Porcupine (wake word) + Rhino (speech-to-intent)
+   Purpose-built for this: small fixed command set, context trained in Picovoice Console, fully offline on iOS/Android/Flutter/React Native. Latency: frame-level (512 samples at 16 kHz ≈ 32 ms) — lowest here. Mic: low-level API takes int16 frames you supply; avoid the "Manager" wrappers. Battery: vendor says "minimal", gives no wattage. Cost: commercial, AccessKey required; B2B-only, one-time Free Trial, no personal plan; pricing quote-based (unknown).
+   https://github.com/Picovoice/porcupine  https://github.com/Picovoice/rhino  https://picovoice.ai/docs/faq/general/
+
+4. Vosk
+   Apache-2.0, offline, ~50 MB models, streaming API, runtime grammar restriction (JSON list of your 6 phrases) so it behaves like a KWS. Android and iOS bindings. Mic: you push PCM — shares fine. Battery: Kaldi nnet, heavier than Picovoice; numbers unknown.
+   https://github.com/alphacep/vosk-api  https://alphacephei.com/vosk/adaptation
+
+5. whisper.cpp / WhisperKit
+   MIT, offline, iOS/Android examples exist. Chunked (30 s window), not streaming; "real-time" demos use rolling windows with seconds of latency and heavy CPU/GPU — worst battery. No grammar mode. Unsuitable for live commands while encoding video.
+   https://github.com/ggml-org/whisper.cpp  https://github.com/argmaxinc/WhisperKit
+
+6. Platform keyword-spotting APIs
+   Apple: no public custom-KWS API. Android: none either (SoundTrigger is system/OEM-only). Not usable.
+
+RECOMMENDATIONS
+- iOS: SFSpeechRecognizer on-device fed from the same AVAudioEngine tap, filter transcripts to the 6 commands. Free, no SDK, adequate latency.
+- Android: Vosk with a 6-phrase grammar, fed from your AudioRecord. Avoids the SpeechRecognizer own-mic problem and OEM availability gaps.
+- Cross-platform (single engine, best latency, if budget allows): Picovoice Porcupine+Rhino via low-level frame API. If no budget: Vosk on both.
+- In all cases add platform AEC or push-to-talk; echo from playback is otherwise unsolved.
