@@ -1,0 +1,90 @@
+TEST STRATEGY — VoiceCam POC
+============================
+Principle: 3 layers, no framework, `npm test` < 10s. Anything that needs a
+phone is a checklist, not a script.
+
+EXISTING TESTS — VERDICT
+- test_commands.js: real. Fast, pure, catches parser regressions. Keep, extend.
+- smoke.js: half theater. Real value: fake-device MediaRecorder record→pause→stop
+  produces a clip with no JS errors (that's a genuine "did Chrome change
+  MediaRecorder" canary). Theater: (a) default URL is GitHub Pages, so it
+  tests the deploy + network, not your working copy; (b) not in `npm test`,
+  so it never runs; (c) zero coverage of the speech path, which is where every
+  real bug has been (restart races, echo re-trigger). Fix: default URL to
+  localhost via devserver.py, add to `npm test`, inject a fake SR (below).
+
+1. UNIT (node:assert, commands.js)
+What to test — parser edge cases, add now:
+  'stopwatch'→null, 'play it again'→null, 'start recording'→null (tail rule
+  means this does NOT fire — decide if that's a bug), 'stop recording'→null,
+  'hold on'→null, 'cut!'→'stop', 'okay go back'→'rewind', 'let's start'→
+  'record' (probably a false positive; decide), 'STOP'→'stop', multi-space/
+  newline input.
+What to extract — one thing: the echo-guard debounce (index.html:121) is the
+only non-parser logic worth a pure function:
+    function dispatch(text, now, last) {           // in commands.js
+      const cmd = parseCommand(text);
+      return cmd && now - last > 1500 ? cmd : null;
+    }
+Tests: interim 'stop' then final 'stop' 400ms later → second is null; 'pause'
+1600ms after 'stop' fires. Tune 1500 becomes a tested constant, not folklore.
+NOT to test: actions{} state machine. It's a 7-line wrapper over
+MediaRecorder.state; faking MediaRecorder in node costs more than the code
+and Playwright hits the real one. SR restart logic: same — the bug class is
+Blink's started_ flag ordering, which only a real/fake SR event sequence
+exercises (layer 2).
+Points: 1.
+
+2. COMPONENT (Playwright headless, Chromium fake devices)
+CAN verify: record/pause/resume/stop with real MediaRecorder; clip blob
+non-empty; screen source path with --auto-select-desktop-capture-source;
+no pageerror; and — the missing piece — the speech→action pipeline by
+injecting a fake SR via page.addInitScript:
+    window.webkitSpeechRecognition = class { start(){this.onstart()}
+      stop(){this.onend()} };   // test drives onresult/onerror/onend
+Scenarios: fake onresult('stop') while recording → state 'stopped';
+onerror('network') then onend → start() called again after ~250ms, exactly
+once (asserts the onend-only restart rule from research/speech-restart-
+pattern.txt); onerror('not-allowed') → no restart; interim+final same word →
+one action; 'stop' fires during playback → pause, not double-fire.
+CANNOT verify: recognition accuracy, real latency, mic contention on mobile
+(SR and getUserMedia fight on Android, research doc §2), Safari anything,
+Bluetooth/HFP silence, cloud network errors. Don't try — those are device
+checklist items.
+NOT to test: pixel/layout, the <video> duration hack (Chrome-version-specific,
+check by eye).
+Points: 3 (localhost default + fake SR + 5 scenarios + npm test wiring).
+
+3. LATENCY (manual, real phone, ~10 min)
+Measurable: ms from end of spoken command to actions[cmd]() call.
+Method, no gear — the recording IS the audio marker: log Date.now() at
+rec.start() and at each '> cmd' (log() currently truncates to seconds;
+change slice(11,19) to slice(11,23)). Clip elapsed at action = t_action −
+t_start (minus paused time). Open clip in Audacity/any waveform viewer,
+read where the word ends. latency = elapsed − word_end. 10 trials of
+'stop'/'pause', record p50/p90 in planning/latency.txt.
+Threshold: p90 ≤ 1000ms pass, > 2000ms fail. Why: interim results arrive
+~300-800ms after utterance end on Chrome cloud ASR; 1s is under the debounce
+window (so debounce logic stays coherent) and under the ~1s it takes to reach
+for a button — above that, voice control loses to the button and the
+trailing footage per clip becomes annoying to trim.
+Points: 1 (log precision + write-up).
+
+4. PERF (manual, real phone, once per major change)
+- Memory over 10-min recording: add a per-minute log line of
+  chunks.reduce(size). Expect linear ≈ bitrate (Chrome ~2.5Mbps → ~19MB/min,
+  ~190MB at 10 min). On Android: chrome://inspect → Memory → heap snapshot at
+  0/5/10 min; growth beyond blob total = leak. Pass: no crash, JS heap flat,
+  blob growth linear.
+- Dropped frames: `ffprobe -count_frames -select_streams v -show_entries
+  stream=nb_read_frames,r_frame_rate,duration` on the saved clip; compare
+  nb_read_frames vs fps×duration. Pass: ≥95%. Alternative in-page:
+  v.getVideoPlaybackQuality().droppedVideoFrames after playing the clip.
+- Battery: navigator.getBattery().level logged at start/stop (Chrome
+  Android), or just read OS %. Pass: ≤6% per 10 min (camera+screen-on
+  baseline is ~3-4%; SR streaming adds ~1-2%).
+NOT to test: desktop perf (irrelevant), synthetic Lighthouse scores.
+Points: 2 (log lines + one checklist file).
+
+TOTAL: 7 points. Automated = layers 1-2 (~5s). Layers 3-4 = a checklist run
+on a phone before any demo, results pasted into planning/.

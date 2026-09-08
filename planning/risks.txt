@@ -1,0 +1,70 @@
+RISK REGISTER — VoiceCam POC -> 50 daily creators (hostile review, 2026-09-08)
+Baseline: index.html, Web Speech (cloud, own mic), MediaRecorder, GitHub Pages.
+Verified only on Windows Chrome + AirPods. Users are on iPhones. Nothing below is proven.
+L/I = likelihood/impact. SP = story points.
+
+R1  iOS Safari: SpeechRecognition + getUserMedia mic coexistence     L:H I:H
+    Mobile browsers historically refuse two mic consumers (SO 25920854). Safari may abort the
+    recognizer when the recorder takes the mic. Start-order hack is unverified there.
+    Experiment (2 SP): borrow any iPhone, open live URL, run 3 min. Evidence: log shows
+    sr:audio + "heard:" while rec.state=recording. No Mac needed.
+    If fails: vosk-browser fed from our own stream (research/browser-offline-kws.txt).
+    Also retires R5, R7. Assume we end up there.
+
+R2  Safari MediaRecorder emits mp4, not webm; TikTok/IG accept it?   L:M I:H
+    MediaRecorder mp4 often lacks duration / moov placement; IG rejects webm outright.
+    Experiment (1 SP): record 30s on iPhone Safari, Save, upload to TikTok + IG + Shorts.
+    Evidence: all three publish with correct duration and audio.
+    If fails: Web Share API to Photos, let native apps upload. ffmpeg.wasm remux is last resort.
+
+R3  Echo: playback says "stop", recognizer obeys                      L:H I:M
+    1.5s debounce blocks nothing after 1.5s. Phone speaker -> phone mic is worst case.
+    Experiment (1 SP): record "play... stop... rewind" as content, play back at full volume.
+    Evidence: zero commands fire during playback.
+    If fails: ignore recognizer while state==playing; exit playback by tap. One line, do it anyway.
+
+R4  False positives: "stop"/"play" in normal speech                   L:H I:H
+    "Let's play this back..." cuts every take. Word-spotting on free speech is the wrong model.
+    Experiment (2 SP): 5 creators, 10-min scripted talk containing command words.
+    Evidence: <1 false trigger per 10 min.
+    If fails: wake word ("camera, stop") or two-word commands. Rewrite parseCommand; no ML.
+
+R5  Cloud speech privacy: every take streams to Google/Apple           L:H I:M
+    Unreleased content, sponsor scripts, NDA reveals. 50 creators = 1 angry tweet.
+    Experiment (1 SP): ask 10 creators. Evidence: <2 objections. Also try Chrome
+    processLocally:true on Android (0.5 SP).
+    If fails: on-device engine (vosk). Same fallback as R1.
+
+R6  Distribution: PWA vs App Store                                     L:M I:M
+    Creators install from bios and the App Store, not "Add to Home Screen". iOS PWA drops
+    mic on background, camera on lock.
+    Experiment (1 SP): send URL to 10 creators, count who reaches a saved clip unaided.
+    Evidence: >=7/10.
+    If fails: keep PWA for validation; Capacitor wrap only if retention proves it. Native
+    Swift needs a Mac we don't have.
+
+R7  Recognition cutoff ~60s / 15s silence mid-take                     L:H I:M
+    Restart-on-onend exists; the gap is 250ms + network. Safari may beep or re-prompt per
+    restart (unverified). Mid-take silences are normal.
+    Experiment (1 SP): 10-min recording, say "pause" every 45s. Evidence: 100% caught, no
+    beep or prompt on restart.
+    If fails: vosk (no session limit). Or accept commands only reliable within 60s of speech.
+
+R8  Large clips in tab memory                                          L:M I:H
+    10 min 1080p ≈ 0.5-1GB of Blob chunks in RAM. iOS tab reload = clip gone.
+    Experiment (1 SP): 10-min take on the cheapest iPhone available. Evidence: Save works,
+    no reload.
+    If fails: write chunks to OPFS on ondataavailable; cap takes at 3 min for MVP.
+
+R9  Losing a 10-min take on crash / call / lock screen                 L:H I:H
+    Incoming call, lock, Safari memory reaper all kill the tab; chunks live in RAM.
+    Experiment (1 SP): start recording, lock phone, take a call. Evidence: clip recoverable.
+    If fails: persist chunks incrementally (same fix as R8) + recovery screen. Non-negotiable
+    before 50 users; this is data loss.
+
+TOP 3 THIS WEEK
+1. R1 iPhone Safari coexistence (2 SP). If it fails, decide vosk immediately; everything
+   else is moot until then.
+2. R9+R8 lock/call/crash survival (2 SP combined). Data loss is the one thing we don't ship.
+3. R2 mp4 upload to TikTok/IG (1 SP). Proves output is usable, not just recordable.
+Skip this week: R6, R5 — prove it works before asking how to ship it.

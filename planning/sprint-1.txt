@@ -1,0 +1,53 @@
+SPRINT 1 PROPOSAL — 2026-09-08 (awaiting Sean approval)
+
+Source docs: planning/backlog.txt, planning/test-strategy.txt, planning/risks.txt
+All three agents independently converged on the same #1: nothing else matters
+until we know it works on an iPhone.
+
+GOAL
+  Prove or kill the premise on the target device. Voice pause/resume across the
+  room on an iPhone 17, without a Mac. Decide continue/stop by end of sprint.
+
+STORIES (13 pts total)
+  S1  iPhone Safari go/no-go                                   3 pts
+      Open Pages URL in Safari. Start listening, record, pause, resume, stop.
+      Evidence: dev.log lines from phone (devserver on LAN). Pass = 5 commands fire.
+      Fail path: vosk-browser (offline, feeds our own audio track).
+  S2  Echo guard: ignore recognizer while state==playing        1 pt
+      Risk agent is right: the 1.5s debounce is not an echo guard.
+  S3  False-positive guard: parser edge cases as unit tests     1 pt
+      Verified today: "stopwatch"->null, "play it again"->null, "hold on"->null.
+      BUG: "I need to stop" -> stop. "let's start" -> record. Decide rule:
+      require command to be the ONLY utterance, or last word + short utterance.
+  S4  Fake SpeechRecognition in Playwright (component tests)    3 pts
+      Drives onresult/onerror/onend. Covers restart-once, not-allowed halts,
+      interim+final = one action. Move smoke.js into npm test against localhost.
+  S5  mp4 upload check: Safari clip -> TikTok/IG/Shorts         1 pt
+      Manual. Pass = uploads accepted, plays with audio.
+  S6  Survive lock screen / incoming call mid-take              2 pts
+      Manual on iPhone. Pass = clip to that point is saved, not lost.
+  S7  Latency measurement (p90 <= 1000 ms utterance-end -> action) 1 pt
+      Recording IS the audio marker; ms log at rec.start and at command.
+  S8  "again" retake (backlog N4, the one real differentiator)   1 pt
+      Stop current take, discard, start new. Only if S1 passes.
+
+NOT THIS SPRINT (and why)
+  Multiple takes, countdown, share-to-Photos, A2HS: backlog Next. Useless if S1 fails.
+  OPFS incremental save (R8/R9): non-negotiable before 50 users, pointless before 1.
+  vosk-browser: fallback only, triggered by S1 failure.
+
+KILLED (agents agree, native apps already do it)
+  captions, silence-cut, aspect crop, templates, export presets, cloud/collab,
+  AI hooks, voice editing.
+
+PREMISE CHALLENGE (backlog agent, I agree it deserves an answer)
+  iOS Voice Control, Samsung "Cheese", TikTok timer, and a $10 Bluetooth
+  clicker already start recording hands-free. Our only edge is pause/resume/
+  retake mid-monologue across the room. Decision rule after S1-S3: if voice
+  is not measurably better than timer + clicker, stop the project.
+
+DECISION NEEDED FROM SEAN
+  1. Approve Sprint 1 as listed, or cut/add.
+  2. Confirm you will run S1/S5/S6 on your iPhone (10 min each, I prep everything).
+  3. False-positive rule for S3: (a) command must be the whole utterance,
+     (b) last word wins as today. I recommend (a) — creators talk a lot.

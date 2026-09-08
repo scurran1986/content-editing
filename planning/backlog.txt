@@ -1,0 +1,107 @@
+VOICECAM BACKLOG — skeptical cut (2026-09-08)
+Source: PLAN.md "Feature ideas" + creator needs. Points: 1/2/3/5/8 (8 = split).
+
+PREMISE CHECK (read before the stories)
+- Voice record control exists natively: Samsung camera ("record video"), iOS
+  Voice Control, Apple Watch / $10 Bluetooth clicker, TikTok 3s/10s timer.
+  Our only non-native angle: pause/resume/retake across the room mid-talk —
+  unproven on the target phone. Everything below serves proving that.
+- Browser vehicle: acceptable ONLY because there is no Mac. Costs: Safari mp4
+  vs Chrome webm, no lock-screen use, Android Chrome can't run
+  SpeechRecognition + getUserMedia together (SO 25920854). PWA = test rig,
+  not product. Decide after N1.
+- Voice vs tap: tap wins phone-in-hand. Voice wins only hands-free at
+  distance. Anything usable within arm's reach: kill.
+
+=== NOW (next 2 sprints, <=3 pts, max 8) ===
+
+N1. iPhone Safari go/no-go                                      [3]
+As a creator I want the POC to record + obey voice on my iPhone so the
+product isn't a Windows demo.
+AC: (1) Safari iOS: "record"/"stop" produce a playable clip. (2) Latency
+word-end→state change measured, logged, <1s. (3) Written verdict: ship PWA,
+vosk-browser fallback, or stop.
+Why exist: Nothing else matters if this fails. Cannot be killed.
+
+N2. Echo self-trigger test + fix                                [2]
+As a creator I want playback of my clip not to say "stop" and stop itself.
+AC: (1) Clip containing spoken "stop, play, rewind" plays through on phone
+speaker without firing. (2) Same clip fires 0 commands at 1.5s debounce OR
+recognizer paused during playback. (3) Result in dev.log.
+Why exist: PLAN lists it as a hard gate; unverified on device. Native apps
+don't have this problem, we do.
+
+N3. False-positive guard while talking to camera                 [2]
+As a creator I want to say "...then just stop" mid-take without ending it.
+AC: (1) 20-line script with embedded command words, ≤1 false fire.
+(2) parseCommand tail rule documented in test_commands.js with 5 new cases.
+(3) Optional prefix ("camera stop") toggle costs one line.
+Why exist: TikTok has no voice at all, so no precedent — but a recorder that
+cuts mid-sentence is worse than a timer. Keep.
+
+N4. "Again" = retake (discard + re-record)                       [2]
+As a creator I want to say "again" to bin the last take and start a new one.
+AC: (1) "again" while recording/stopped → previous blob dropped, new
+recording starts. (2) Status shows take count. (3) test case in test_commands.
+Why exist: THE hands-free use case TikTok lacks (TikTok retake = walk to
+phone, tap trash, confirm). Smallest real differentiator. Keep.
+
+N5. Keep multiple takes, save chosen one                          [3]
+As a creator I want takes 1..n kept so I don't lose a good one to "again".
+AC: (1) Takes listed with duration. (2) "play" on a selected take.
+(3) Save button downloads the selected take. No editing.
+Why exist: iOS Camera keeps every clip in Photos already. Only justified
+because "again" (N4) discards — ceiling: last 5 takes in memory.
+
+N6. Countdown on "record"                                        [1]
+As a creator I want 3s before recording so I'm in position.
+AC: (1) Big 3-2-1 overlay. (2) Skippable via "go". (3) One toggle, on by default.
+Why exist: TikTok has a timer natively — but not paired with voice start
+across the room. 1 point, tolerated. Kill if N1 fails.
+
+N7. Save works on iPhone (Photos, not Downloads)                 [2]
+As a creator I want the clip in my camera roll so I can post it in TikTok.
+AC: (1) Safari: navigator.share({files}) lands mp4 in Photos. (2) Chrome
+download still works. (3) File opens in TikTok upload.
+Why exist: Browser download ≠ camera roll on iOS; clip is trapped otherwise.
+
+N8. Add-to-Home-Screen + wake lock                               [1]
+As a creator I want the screen not to sleep mid-take.
+AC: (1) wakeLock held while recording. (2) manifest icon/name. (3) Launches
+fullscreen from home screen.
+Why exist: Native gets this free; browser doesn't. One-liner.
+
+=== NEXT ===
+
+X1. Mark good/bad take by voice ("keep"/"trash")                 [2]
+Why exist: extends N5. Kill if creators review phone-in-hand anyway.
+X2. Voice scrub ("back 10")                                      [2]
+Why exist: review is phone-in-hand; thumb beats voice. Only if asked.
+X3. vosk-browser fallback (offline, grammar-constrained)         [5]
+Why exist: only if N1 shows Web Speech flaky. 40MB model.
+X4. Android Chrome path                                          [5]
+Why exist: mic contention likely forces X3 anyway. Wait for evidence.
+X5. Multi-cam / 2-phone control                                  [8→split]
+Why exist: PLAN open question #4. No signal. Park.
+
+=== LATER ===
+L1. Teleprompter with voice scroll                               [3]
+    BIGVU/CapCut do it; voice-scroll mildly novel.
+L2. Playback speed by voice                                      [1]
+    TikTok has speed natively; review-only value.
+L3. Direct share to TikTok/Reels                                 [2]
+    navigator.share (N7) covers it; TikTok re-encodes anyway.
+
+=== KILLED ===
+K1. Auto-captions — SKIP. TikTok + CapCut native, free, better.
+K2. Auto-cut silences / jump cuts — SKIP. CapCut native; needs ffmpeg in
+    browser (ffmpeg-kit archived; wasm = 30MB + slow on phone).
+K3. Aspect crop 9:16/1:1/16:9 — SKIP. Phone camera + every editor does it.
+K4. Templates / B-roll slots — SKIP. CapCut's entire business.
+K5. Export presets per platform — SKIP. Platforms transcode on upload.
+K6. Cloud sync / collab / AI hooks — SKIP. No users; hooks = ChatGPT tab.
+K7. Voice editing ("cut that") — SKIP. Editing is phone-in-hand; tap wins.
+K8. Screen-source recording — shipped, nobody asked. Don't extend.
+
+DECISION RULE: after N1–N3, if voice isn't reliably better than TikTok's
+timer + a $10 Bluetooth clicker for the across-the-room case, stop the project.
