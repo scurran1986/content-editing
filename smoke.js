@@ -2,12 +2,13 @@
 // Not a Safari test. Run: node smoke.js
 const { chromium } = require('playwright');
 (async () => {
-  const b = await chromium.launch({ args: ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream'] });
+  const b = await chromium.launch({ args: ['--use-fake-ui-for-media-stream', '--use-fake-device-for-media-stream', '--auto-select-desktop-capture-source=Entire screen'] });
   const ctx = await b.newContext({ permissions: ['camera', 'microphone'] });
   const p = await ctx.newPage();
   const errs = [];
   p.on('pageerror', e => errs.push(e.message));
   await p.goto('https://scurran1986.github.io/content-editing/');
+  await p.selectOption('#src', process.env.SRC || 'camera');
   await p.evaluate(async () => { await actions.record(); });
   await p.waitForTimeout(2500);
   const st1 = await p.textContent('#status');

@@ -9,7 +9,7 @@
   body{margin:0;background:#000;color:#fff;font:16px system-ui;display:flex;flex-direction:column;height:100dvh}
   video{flex:1;width:100%;object-fit:cover;background:#111}
   #bar{padding:10px;display:flex;gap:8px;flex-wrap:wrap;align-items:center}
-  button{font:inherit;padding:12px 16px;border:0;border-radius:8px;background:#333;color:#fff}
+  button,select{font:inherit;padding:12px 16px;border:0;border-radius:8px;background:#333;color:#fff}
   button.on{background:#e33}
   #status{font-weight:700}
   #heard{color:#9f9;min-height:1.2em}
@@ -19,6 +19,7 @@
 <body>
 <video id="v" playsinline muted autoplay></video>
 <div id="bar">
+  <select id="src"><option value="camera">Camera</option><option value="screen">Screen</option></select>
   <button id="mic">Start listening</button>
   <span id="status">idle</span>
   <span id="heard"></span>
@@ -35,6 +36,14 @@ function setState(s) { state = s; $('status').textContent = s; }
 
 async function camera() {
   if (stream) return stream;
+  if ($('src').value === 'screen') {
+    // ponytail: screen video + mic audio merged into one stream; system audio not captured.
+    const disp = await navigator.mediaDevices.getDisplayMedia({ video: true, audio: false });
+    const mic = await navigator.mediaDevices.getUserMedia({ audio: true });
+    stream = new MediaStream([...disp.getVideoTracks(), ...mic.getAudioTracks()]);
+    disp.getVideoTracks()[0].onended = () => actions.stop();   // user clicked "Stop sharing"
+    log('got screen+mic');
+  } else {
   const tries = [
     ['cam+mic', { video: { facingMode: 'user' }, audio: true }],
     ['cam+mic(any)', { video: true, audio: true }],
@@ -49,6 +58,7 @@ async function camera() {
     const devs = await navigator.mediaDevices.enumerateDevices().catch(() => []);
     log('devices: ' + (devs.map(d => d.kind).join(',') || 'none') + ' — check Settings > Safari > Camera/Microphone = Ask/Allow');
     throw new Error('no media');
+  }
   }
   $('v').srcObject = stream; $('v').muted = true;
   log('tracks: ' + stream.getTracks().map(t => t.kind + ':' + t.label + ':' + t.readyState).join(' | '));
