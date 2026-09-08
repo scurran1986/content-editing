@@ -1,0 +1,5 @@
+{
+  "name": "content-editing",
+  "private": true,
+  "scripts": { "test": "node test_commands.js && node --check commands.js" }
+}
