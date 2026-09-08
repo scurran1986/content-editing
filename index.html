@@ -29,10 +29,15 @@
 <script src="commands.js"></script>
 <script>
 const $ = id => document.getElementById(id);
-const log = m => { $('log').textContent = m + '\n' + $('log').textContent; };
+const log = m => {
+  $('log').textContent = m + '\n' + $('log').textContent;
+  if (location.hostname === 'localhost') navigator.sendBeacon('/log', new Date().toISOString().slice(11, 19) + ' ' + m);
+};
+window.onerror = (m, s, l) => log('JS ERROR ' + m + ' @' + l);
+window.onunhandledrejection = e => log('PROMISE ERROR ' + (e.reason?.message || e.reason));
 let stream, rec, chunks = [], clip = null, state = 'idle';
 
-function setState(s) { state = s; $('status').textContent = s; }
+function setState(s) { state = s; $('status').textContent = s; log('state: ' + s + (rec ? ' rec=' + rec.state : '')); }
 
 async function camera() {
   if (stream) return stream;
@@ -65,7 +70,11 @@ async function camera() {
   return stream;
 }
 $('v').onerror = () => log('video error: ' + ($('v').error?.message || $('v').error?.code));
-$('v').onloadedmetadata = () => { if (!$('v').srcObject) log('clip ' + $('v').videoWidth + 'x' + $('v').videoHeight + ' ' + $('v').duration + 's'); };
+$('v').onloadedmetadata = () => {
+  if ($('v').srcObject) return;
+  if ($('v').duration === Infinity) { $('v').currentTime = 1e9; $('v').ontimeupdate = () => { $('v').ontimeupdate = null; $('v').currentTime = 0; }; }  // webm from MediaRecorder lacks duration; force Chrome to compute it
+  log('clip ' + $('v').videoWidth + 'x' + $('v').videoHeight + ' ' + $('v').duration + 's');
+};
 
 const actions = {
   async record() {
@@ -95,26 +104,31 @@ const actions = {
 
 // ponytail: Web Speech API only. Safari sends audio to Apple; fine for a POC.
 const SR = window.SpeechRecognition || window.webkitSpeechRecognition;
-let sr, listening = false, lastCmd = 0;
+let sr, listening = false, srActive = false, lastCmd = 0;
 function listen() {
   if (!SR) { log('No SpeechRecognition in this browser'); return; }
   sr = new SR(); sr.continuous = true; sr.interimResults = true; sr.lang = 'en-US';
+  sr.onstart = () => { srActive = true; log('sr: started'); };
+  sr.onaudiostart = () => log('sr: audio');
+  sr.onspeechstart = () => log('sr: speech');
   sr.onresult = e => {
     const r = e.results[e.results.length - 1];
     const text = r[0].transcript;
     $('heard').textContent = text;
+    log((r.isFinal ? 'heard: ' : 'interim: ') + text);
     const cmd = parseCommand(text);
     // ponytail: 1.5s debounce is the echo guard — playback saying "stop" re-triggers otherwise. Tune on device.
     if (cmd && Date.now() - lastCmd > 1500) { lastCmd = Date.now(); log('> ' + cmd); actions[cmd](); }
   };
-  sr.onerror = e => log('sr error: ' + e.error);
-  sr.onend = () => { if (listening) sr.start(); };   // Safari stops after silence; restart
+  sr.onerror = e => { log('sr error: ' + e.error); if (['not-allowed', 'service-not-allowed', 'language-not-supported'].includes(e.error)) listening = false; };
+  sr.onend = () => { srActive = false; log('sr: ended'); if (listening) setTimeout(() => { if (listening && !srActive) try { sr.start(); } catch (e) { log('sr restart: ' + e.message); } }, 250); };
+  document.onvisibilitychange = () => { if (!document.hidden && listening && !srActive) try { sr.start(); } catch (e) {} };
   sr.start(); listening = true;
   $('mic').textContent = 'Listening'; $('mic').classList.add('on');
 }
 $('mic').onclick = async () => {
   if (listening) { listening = false; sr.stop(); $('mic').textContent = 'Start listening'; $('mic').classList.remove('on'); return; }
-  try { await camera(); listen(); } catch (e) { log('camera: ' + e.message); }
+  try { listen(); await camera(); } catch (e) { log('camera: ' + e.message); }
 };
 </script>
 </body>

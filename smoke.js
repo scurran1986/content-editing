@@ -7,7 +7,7 @@ const { chromium } = require('playwright');
   const p = await ctx.newPage();
   const errs = [];
   p.on('pageerror', e => errs.push(e.message));
-  await p.goto('https://scurran1986.github.io/content-editing/');
+  await p.goto(process.env.URL || 'https://scurran1986.github.io/content-editing/');
   await p.selectOption('#src', process.env.SRC || 'camera');
   await p.evaluate(async () => { await actions.record(); });
   await p.waitForTimeout(2500);

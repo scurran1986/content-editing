@@ -1,0 +1,84 @@
+webkitSpeechRecognition — keep-alive restart pattern (Chrome)
+=============================================================
+
+ROOT CAUSE OF "recognition has already started"
+Blink sets an internal started_ flag synchronously inside start() and clears it
+ONLY in SpeechRecognition::Ended() (the same call that dispatches onend).
+onerror fires BEFORE onend, so any start() from onerror, from a timer, or from
+a second code path while started_ is still true throws InvalidStateError.
+Source: third_party/blink/renderer/modules/speech/speech_recognition.cc
+(CheckAvailabilityAndStart: `if (started_) ... "recognition has already
+started."`; Ended(): `started_ = false`).
+Rule: restart from onend only, and never call start() anywhere else while a
+session is live.
+
+SAME INSTANCE OR NEW ONE?
+Same instance is fine. Ended() resets started_/stopping_/session_, so the
+object is reusable; Chrome creates a fresh backend session per start(). No
+need to construct a new webkitSpeechRecognition per restart (doing so only
+matters if you want to change lang/continuous/grammars between sessions).
+
+CODE (same-instance, onend-only restart)
+----------------------------------------
+const sr = new webkitSpeechRecognition();
+sr.continuous = true; sr.interimResults = true; sr.lang = 'en-US';
+let started = false, wantListening = true, fatal = false;
+sr.onstart = () => { started = true; };
+sr.onresult = e => { /* consume e.results[e.resultIndex..] */ };
+sr.onerror = e => {
+  // fatal: user/policy blocked or unsupported config -> stop retrying
+  if (['not-allowed','service-not-allowed','bad-grammar',
+       'language-not-supported','phrases-not-supported'].includes(e.error)) fatal = true;
+  // restartable: 'no-speech','aborted','network','audio-capture' -> fall through to onend
+};
+sr.onend = () => {
+  started = false;
+  if (wantListening && !fatal) setTimeout(safeStart, 250);
+};
+function safeStart() {
+  if (started || !wantListening) return;
+  try { sr.start(); } catch (e) { /* InvalidStateError: race, onend will retry */ }
+}
+document.addEventListener('visibilitychange', () => {
+  if (document.visibilityState === 'visible') safeStart(); // after 'aborted' on focus loss
+});
+function stop() { wantListening = false; sr.stop(); }
+safeStart();
+
+ERROR CODES (SpeechRecognitionErrorEvent.error)
+ no-speech               restartable (Chrome no-speech timeout; ~5-8s idle in
+                         non-continuous, continuous sessions end after
+                         silence too — onend follows, restart)
+ aborted                 restartable (tab hidden/focus loss, abort(), another
+                         tab grabbed the mic; restart on visibilitychange)
+ network                 restartable (Google backend hiccup; keep 250ms+ delay,
+                         consider exponential backoff after repeated hits)
+ audio-capture           restartable-ish (mic unplugged/busy; retry with delay,
+                         give up after N fails)
+ not-allowed             FATAL (permission denied / no user gesture / insecure origin)
+ service-not-allowed     FATAL (UA/enterprise policy blocks the service)
+ bad-grammar             FATAL (config error)
+ language-not-supported  FATAL (config error)
+ phrases-not-supported   FATAL (config error; contextual biasing)
+
+~60s CONTINUOUS CUTOFF
+With continuous=true Chrome still ends the session after a period of silence
+(speech_recognizer_impl.cc sets a 15s complete-silence endpointer for
+continuous mode; the cloud backend additionally caps sessions around a
+minute). It simply fires onend (sometimes preceded by no-speech). The pattern
+above handles it: onend -> setTimeout -> start(). Do NOT add a watchdog timer
+that calls start(); that is the classic source of the InvalidStateError.
+
+WHY THE setTimeout
+Ended() is dispatched while the backend session is being torn down; a
+synchronous start() inside onend works in most builds but occasionally races
+the mic release (audio-capture) or repeated network errors into a tight loop.
+100-300ms is enough; the try/catch is belt-and-braces for the race.
+
+SOURCES
+https://chromium.googlesource.com/chromium/src/+/main/third_party/blink/renderer/modules/speech/speech_recognition.cc
+https://chromium.googlesource.com/chromium/src/+/main/content/browser/speech/speech_recognizer_impl.cc
+https://wicg.github.io/speech-api/#dom-speechrecognition-start
+https://developer.mozilla.org/en-US/docs/Web/API/SpeechRecognitionErrorEvent/error
+https://developer.mozilla.org/en-US/docs/Web/API/SpeechRecognition/start
+https://stackoverflow.com/questions/29996350/speech-recognition-run-continuously

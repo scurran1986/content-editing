@@ -1,0 +1,46 @@
+In-browser offline speech command recognition — survey (2026-09-08)
+Repo stats via api.github.com. Sizes/latency/iOS notes from project docs + known constraints; items marked (unverified) not re-fetched (one fetch denied).
+
+1. vosk-browser  https://github.com/ccoreilly/vosk-browser
+   Health: not archived, pushed 2025-12-07, 529 stars, Apache-2.0. npm latest 0.0.8 (2022-12) — mature but slow-moving.
+   Model: vosk-model-small-en-us-0.15 ≈ 40 MB tar.gz (served as model.tar.gz beside page; cacheable).
+   Latency: streaming Kaldi decoder; partial results ~100-300 ms, final on endpoint silence (~0.5 s). Grammar list supported (KaldiRecognizer(sampleRate, JSON.stringify([...words]))) → constrains output to your 7 words, big accuracy win.
+   iOS Safari: WASM, single Web Worker, no SharedArrayBuffer/threads required → works on iOS Safari (no COOP/COEP headers needed).
+   MediaStream input: yes. audioContext.createMediaStreamSource(stream) → ScriptProcessor/AudioWorklet → recognizer.acceptWaveform(AudioBuffer). Accepts any existing MediaStream (works with the same track MediaRecorder is using).
+   Integration: single script tag: <script src="https://cdn.jsdelivr.net/npm/vosk-browser@0.0.8/dist/vosk.js"></script> exposes global Vosk. Plus host the model file.
+
+2. whisper.cpp WASM  https://github.com/ggml-org/whisper.cpp (examples/whisper.wasm, stream.wasm)
+   Health: pushed 2026-09-08, 53.5k stars, MIT.
+   Model: tiny.en ≈ 75 MB (q5 ~31 MB), base.en ≈ 142 MB.
+   Latency: not truly streaming; processes chunks (stream demo uses ~3-5 s windows), 1-3 s per chunk with threads. Poor fit for short commands.
+   iOS Safari: builds use pthreads → needs SharedArrayBuffer → COOP/COEP headers; single-thread fallback is very slow on iPhone. Practically no.
+   MediaStream: examples use getUserMedia internally but you can feed Float32 PCM; requires glue code.
+   whisper-web https://github.com/xenova/whisper-web — pushed 2024-10, 3.3k stars, MIT; transformers.js/ONNX, WebGPU; file/mic transcription, not command spotting. Same latency/size issues.
+
+3. Picovoice Porcupine (wake word) / Rhino (speech-to-intent) Web SDK
+   https://github.com/Picovoice/porcupine (pushed 2026-09-03, 4.9k stars) / https://github.com/Picovoice/rhino (pushed 2026-09-04, 712 stars). Code Apache-2.0 but engine needs an AccessKey (free tier with limits; commercial license for production). npm @picovoice/porcupine-web 4.0.1 (2026-06).
+   Model: Porcupine params ~1-2 MB + per-keyword .ppn (~KB); Rhino context ~few hundred KB. Custom keywords/contexts made on Picovoice Console (web), platform-specific files.
+   Latency: real-time frame-based (512 samples/32 ms), detection ≈ <100 ms after word end. Best accuracy/latency of the lot for fixed commands.
+   iOS Safari: pure WASM (SIMD optional), no SAB → works in iOS Safari.
+   MediaStream: engine.process(Int16Array frame) accepts your own PCM; @picovoice/web-voice-processor opens its own mic by default but can be bypassed. Multiple packages, key management, telemetry to Picovoice servers for key validation → not fully offline, not single-tag.
+
+4. TensorFlow.js speech-commands  https://github.com/tensorflow/tfjs-models/tree/master/speech-commands
+   Health: monorepo pushed 2026-06-23, 14.8k stars, Apache-2.0; speech-commands package itself essentially unmaintained (last real change ~2021).
+   Model: 18-word base ~ 1.5-6 MB; your 7 words are NOT in the vocabulary (yes/no/up/down/left/right/digits) → needs transfer learning with your own recorded samples.
+   Latency: 1 s spectrogram window, ~100-200 ms inference; frequent false positives.
+   iOS Safari: WebGL backend works. MediaStream: listen() opens its own mic; feeding an existing stream requires custom spectrogram code. Not recommended.
+
+5. sherpa-onnx WASM (KWS + streaming ASR)  https://github.com/k2-fsa/sherpa-onnx
+   Health: pushed 2026-09-08, 14.7k stars, Apache-2.0. Very active.
+   Model: KWS zipformer ~3-4 MB; streaming zipformer ASR ~30-70 MB. Custom keywords via text (pinyin/BPE tokens) — no training needed. (unverified in this session)
+   Latency: streaming, <300 ms.
+   iOS Safari: WASM single-thread build, no SAB → should work; official demos run in main thread (UI can jank). Prebuilt wasm bundles on HF, not on a CDN; multi-file (.js + .wasm + .data), no single tag.
+   MediaStream: yes, feed Float32 samples via acceptWaveform.
+
+6. Moonshine web  https://github.com/moonshine-ai/moonshine
+   Health: pushed 2026-08-31, 11k stars, MIT (English models MIT).
+   Model: tiny ~27 MB (ONNX/int8), base ~60 MB. Latency: chunk-based ~200-500 ms after VAD end. Streaming models exist. Uses transformers.js/ONNX Runtime Web; WebGPU optional, WASM fallback; ORT-web threads need SAB but single-thread works on iOS. General ASR, no grammar constraint → must fuzzy-match text to 7 commands. npm package + ESM, not a plain script tag.
+
+RECOMMENDATION: vosk-browser.
+Why: only option that is (a) single <script> tag from jsdelivr, (b) fully offline, no key, Apache-2.0, (c) runs in iOS Safari (no SharedArrayBuffer), (d) accepts the MediaStream you already hold via createMediaStreamSource → acceptWaveform, (e) supports a grammar list so recognition is constrained to exactly your 7 words ("record pause resume stop play rewind fast forward" + "[unk]"), giving good accuracy and ~300 ms response. Cost: one-time 40 MB model download (cache with Cache API) and ~1-2 s model load. Second choice: Picovoice Rhino if you accept an AccessKey and want sub-100 ms with best accuracy.
+Caveat: iOS Safari resamples AudioContext at 44.1/48 kHz; pass ctx.sampleRate to KaldiRecognizer (vosk resamples internally). Use AudioWorklet instead of deprecated ScriptProcessor if the audio graph must stay alive while MediaRecorder runs.

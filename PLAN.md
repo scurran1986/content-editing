@@ -74,3 +74,7 @@ Needs a Mac + Xcode + iPhone. Blocker until Sean confirms hardware.
 - 2026-09-08: Sean: no Mac. Pivot to PWA (one HTML file, Web Speech API), GitHub Pages.
 - 2026-09-08: VERIFIED by Sean in Windows Chrome + AirPods: record/pause/resume/stop/play by voice works.
   Live: https://scurran1986.github.io/content-editing/  Still untested: iPhone Safari.
+- 2026-09-08: Screen source added. Bug: recognizer heard nothing when started AFTER getUserMedia
+  with AirPods. Fix: start recognition first. Verified via dev.log (stop/rewind/fast forward fired).
+  Research: research/chrome-speech-mic-conflict.txt, speech-restart-pattern.txt, browser-offline-kws.txt.
+  Fallback if Web Speech proves flaky: vosk-browser (offline, feeds our own stream, iOS Safari OK, 40MB model).

@@ -1,0 +1,28 @@
+CHROME webkitSpeechRecognition vs concurrent getUserMedia (same mic, Bluetooth HFP, Windows 11)
+
+1. SEPARATE CAPTURE + DEVICE SELECTION (verified, Chromium source, main branch)
+- SpeechRecognizerImpl creates its OWN AudioCapturerSource in the browser process (content/browser/speech/speech_recognizer_impl.cc: CreateAudioCapturerSource(), Initialize(), Start()). It does NOT reuse the page's getUserMedia track. Two independent WASAPI shared-mode streams on the same endpoint.
+- Device: SpeechRecognitionManagerImpl::SessionStart uses the device from the permission request if present, else media::AudioDeviceDescription::kDefaultDeviceId. No way for the page to pick a deviceId for SpeechRecognition; it does not use the "communications" role. Format: 16 kHz mono, converted from native params; on Windows falls back to WaveIn if Core Audio unsupported.
+  https://chromium.googlesource.com/chromium/src/+/main/content/browser/speech/speech_recognizer_impl.cc
+  https://chromium.googlesource.com/chromium/src/+/main/content/browser/speech/speech_recognition_manager_impl.cc
+- Timeouts: kNoSpeechTimeoutMs = 8000 (fires error 'no-speech' if endpointer never detects speech); kEndpointerEstimationTimeMs = 300; continuous mode ends session after 15 s silence. NOTE: if your session ran 60 s with zero results and no 'no-speech' error, the endpointer DID detect sound locally and audio was streamed upstream, but the server returned nothing (or network failed silently) — points at network/server, not at the mic being dead. If instead you got no error at all and onend after ~60 s, check onerror handler wiring; kNetwork should surface as 'network'.
+  https://chromium.googlesource.com/chromium/src/+/main/content/browser/speech/speech_recognizer_impl.h
+
+2. DOCUMENTED SILENT NO-RESULT / BLUETOOTH CASES
+- StackOverflow 74166961 (answer, score 1): "Chrome on Windows PCs does allow concurrent usage of the microphone" with getUserMedia + SpeechRecognition; mobile browsers do not. https://stackoverflow.com/questions/74166961
+- StackOverflow 25920854: Android Chrome cannot record (getUserMedia) while webkitSpeechRecognition is active — mic contention on mobile only. https://stackoverflow.com/questions/25920854
+- StackOverflow 21852846: desktop Chrome, both APIs run together; only permission-prompt duplication noted. https://stackoverflow.com/questions/21852846
+- No Chromium bug specifically about Bluetooth/AirPods + SpeechRecognition found (issues.chromium.org search page is JS-rendered; not verifiable via curl). UNVERIFIED: Windows HFP mics ("Headset (AirPods) Hands-Free AG Audio") deliver 8/16 kHz narrowband audio and can produce silence for the first ~1-2 s while the SCO link opens; endpointer estimates noise floor in the first 300 ms, so a silent/late-opening HFP stream plausibly miscalibrates it. Intermittent (worked once) matches SCO link-race behaviour but this is inference, not documented.
+
+3. CLOUD-BASED
+- Default engine is NetworkSpeechRecognitionEngineImpl, streaming to https://www.google.com/speech-api/full-duplex/v1 (/up and /down). Upstream/downstream error or downstream closed -> error 'network'. Downstream closed with no definitive result -> an EMPTY result list is delivered, then end with no error (RaiseNoMatchErrorIfGotNoResults). Offline = no results. MDN: "involves a server-based recognition engine... won't work offline." Chrome 138+ has optional on-device via processLocally/SpeechRecognition.available()/install().
+  https://chromium.googlesource.com/chromium/src/+/main/content/browser/speech/network_speech_recognition_engine_impl.cc
+  https://developer.mozilla.org/en-US/docs/Web/API/SpeechRecognition
+
+4. WORKAROUNDS (ordering ones are unverified folk fixes; no source proves start-order matters on desktop)
+- Verify network first: watch onerror for 'network'/'no-speech'; empty onresult with results.length==0 means server gave nothing.
+- Set Windows default recording device to a wired/USB mic or the AirPods A2DP-less path; SpeechRecognition always follows the OS default input, getUserMedia can pick another via deviceId — so use the non-BT mic as default and BT for getUserMedia if needed.
+- Start recognition, wait for onaudiostart/onsoundstart, then getUserMedia (avoids HFP link-open race for the endpointer). Unverified.
+- getUserMedia constraints (echoCancellation/noiseSuppression) affect only the page's stream, not the SpeechRecognition capture — not a fix.
+- Robust option: skip Web Speech; send getUserMedia audio to your own ASR (SO 47700531 pattern). https://stackoverflow.com/questions/47700531
+- Try processLocally:true (Chrome 138+) to remove the network dependency.
