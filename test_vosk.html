@@ -1,0 +1,43 @@
+<!doctype html>
+<html lang="en"><head><meta charset="utf-8"><title>vosk harness</title></head><body>
+<!-- Headless proof that the offline fallback engine recognizes our 8 commands from a
+     pre-recorded WAV. No mic, no phone. Web Speech's replacement feeds the SAME
+     parseCommand->dispatch path the product uses. Driven by test_vosk.js. -->
+<script src="/node_modules/vosk-browser/dist/vosk.js"></script>
+<script src="/commands.js"></script>
+<script>
+// Grammar constrains recognition to our vocabulary (command spotting, not free dictation).
+const GRAMMAR = '["record pause resume stop play rewind fast forward again", "[unk]"]';
+
+window.runVosk = async function (wavUrl) {
+  const out = { finals: [], commands: [] };
+  const model = await Vosk.createModel('/fixtures/model.tar.gz');
+  const rec = new model.KaldiRecognizer(16000, GRAMMAR);
+  rec.on('result', m => {
+    const text = m.result.text;
+    if (!text) return;
+    out.finals.push(text);
+    // Each recognized final runs through the REAL product parser.
+    const cmd = parseCommand(text);
+    if (cmd) out.commands.push(cmd);
+  });
+
+  // Decode the fixture at 16 kHz mono — the rate vosk's model expects.
+  const ac = new AudioContext({ sampleRate: 16000 });
+  const buf = await ac.decodeAudioData(await (await fetch(wavUrl)).arrayBuffer());
+  const pcm = buf.getChannelData(0);
+
+  // Feed in ~0.25s chunks; small real delay lets the worker process and emit a
+  // final at each silence gap instead of falling behind and coalescing words.
+  const step = 4000;
+  for (let i = 0; i < pcm.length; i += step) {
+    rec.acceptWaveformFloat(pcm.subarray(i, i + step), 16000);
+    await new Promise(r => setTimeout(r, 30));
+  }
+  rec.retrieveFinalResult();
+  await new Promise(r => setTimeout(r, 1000)); // drain async worker result events
+  model.terminate();
+  return out;
+};
+</script>
+</body></html>

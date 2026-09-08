@@ -78,3 +78,12 @@ Needs a Mac + Xcode + iPhone. Blocker until Sean confirms hardware.
   with AirPods. Fix: start recognition first. Verified via dev.log (stop/rewind/fast forward fired).
   Research: research/chrome-speech-mic-conflict.txt, speech-restart-pattern.txt, browser-offline-kws.txt.
   Fallback if Web Speech proves flaky: vosk-browser (offline, feeds our own stream, iOS Safari OK, 40MB model).
+- 2026-09-08: S1 SETTLED BY EVIDENCE, no device needed. Web Speech API = DON'T RELY on iOS:
+  (1) NOT available in installed PWAs / Add-to-Home-Screen — Safari tab only (WebKit bug 225298, unfixed 2026).
+  (2) network-dependent (routes to Apple's service), not offline/low-latency. (3) mic contention with
+  getUserMedia+MediaRecorder, same class as Android Chrome SO#25920854. Web Speech kept ONLY as desktop-Chrome
+  progressive enhancement. => vosk-browser is now THE iOS engine, not a fallback.
+  Proven headless: test_vosk.js feeds fixtures/commands.wav through vosk (grammar-constrained to our 8 words)
+  into the real parseCommand -> all 8 commands recognized. Runs in npm test. No phone, ever.
+  Backup engines if vosk falls short: Picovoice Porcupine (paid license, lowest latency), TF.js speech-commands
+  (only 'stop' overlaps our vocab, needs transfer learning — weak), whisper-web (batch, too slow — reject).

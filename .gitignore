@@ -1,3 +1,4 @@
 node_modules/
 package-lock.json
 dev.log
+fixtures/model.tar.gz

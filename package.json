@@ -2,7 +2,13 @@
   "name": "content-editing",
   "private": true,
   "scripts": {
-    "test": "node test_commands.js && node --check commands.js && node test_component.js",
+    "test": "node test_commands.js && node --check commands.js && node test_component.js && node test_vosk.js",
     "dev": "python3 devserver.py"
+  },
+  "dependencies": {
+    "vosk-browser": "^0.0.8"
+  },
+  "devDependencies": {
+    "playwright": "^1.63.0"
   }
 }
